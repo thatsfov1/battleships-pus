@@ -8,7 +8,10 @@ import os
 import socket
 import ssl
 import sys
+import threading
 from typing import Final
+from .session import SessionManager
+from .handlers import ClientSession
 
 HOST: Final[str] = ""  # wszystkie interfejsy
 DEFAULT_PORT: Final[int] = 5000
@@ -25,7 +28,7 @@ def listening_port() -> int:
 def configure_logging() -> None:
     logging.basicConfig(
         level=logging.INFO,
-        format="%(asctime)s [%(levelname)s] %(message)s",
+        format="%(asctime)s [%(levelname)s] (%(threadName)s) %(message)s",
         datefmt="%Y-%m-%d %H:%M:%S",
     )
 
@@ -41,9 +44,23 @@ def create_ssl_context() -> ssl.SSLContext:
     return context
 
 
+def handle_client(raw_conn, addr, ssl_context, session_manager):
+    try:
+        conn = ssl_context.wrap_socket(raw_conn, server_side=True)
+        session = ClientSession(conn, addr, session_manager)
+        session.handle()
+    except ssl.SSLError as exc:
+        logging.error("Błąd TLS podczas nawiązywania połączenia z %s: %s", addr, exc.reason)
+        raw_conn.close()
+    except Exception as exc:
+        logging.error("Nieoczekiwany błąd podczas obsługi klienta %s: %s", addr, exc)
+        raw_conn.close()
+
+
 def serve() -> None:
     port = listening_port()
     ssl_context = create_ssl_context()
+    session_manager = SessionManager()
 
     with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as server_sock:
         server_sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
@@ -69,17 +86,12 @@ def serve() -> None:
 
         while True:
             raw_conn, addr = server_sock.accept()
-            try:
-                conn = ssl_context.wrap_socket(raw_conn, server_side=True)
-                from .handlers import ClientSession
-                session = ClientSession(conn, addr)
-                session.handle()
-            except ssl.SSLError as exc:
-                logging.error("Błąd TLS podczas nawiązywania połączenia z %s: %s", addr, exc.reason)
-                raw_conn.close()
-            except Exception as exc:
-                logging.error("Nieoczekiwany błąd podczas akceptowania połączenia od %s: %s", addr, exc)
-                raw_conn.close()
+            client_thread = threading.Thread(
+                target=handle_client,
+                args=(raw_conn, addr, ssl_context, session_manager),
+                daemon=True
+            )
+            client_thread.start()
 
 
 def main() -> None:

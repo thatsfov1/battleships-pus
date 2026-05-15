@@ -1,10 +1,14 @@
 import sqlite3
 import jwt
 import datetime
+import os
+from dotenv import load_dotenv
 from typing import Optional
 
+load_dotenv()
+
 DB_PATH = "users.db"
-SECRET_KEY = "super_tajny_klucz_serwera" # W produkcji powinno byc w .env
+SECRET_KEY = os.getenv("SECRET_KEY", "default_secret_key_if_missing")
 ALGORITHM = "HS256"
 
 def verify_user(username: str, password_hash: str) -> bool:

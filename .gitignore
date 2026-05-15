@@ -1,0 +1,19 @@
+# Secrets and local config
+.env
+users.db
+
+# TLS Certificates
+certs/server.key
+certs/server.crt
+
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+.venv/
+venv/
+ENV/
+
+# OS specific
+.DS_Store
+Thumbs.db
