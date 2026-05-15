@@ -6,12 +6,16 @@ import errno
 import logging
 import os
 import socket
+import ssl
 import sys
 from typing import Final
 
 HOST: Final[str] = ""  # wszystkie interfejsy
 DEFAULT_PORT: Final[int] = 5000
 BACKLOG: Final[int] = 5
+
+CERT_FILE: Final[str] = "certs/server.crt"
+KEY_FILE: Final[str] = "certs/server.key"
 
 
 def listening_port() -> int:
@@ -26,8 +30,21 @@ def configure_logging() -> None:
     )
 
 
+def create_ssl_context() -> ssl.SSLContext:
+    context = ssl.create_default_context(ssl.Purpose.CLIENT_AUTH)
+    try:
+        context.load_cert_chain(certfile=CERT_FILE, keyfile=KEY_FILE)
+    except FileNotFoundError as exc:
+        logging.error("Nie znaleziono plików certyfikatów: %s", exc)
+        logging.error("Uruchom certs/generate_certs.sh przed startem serwera.")
+        raise SystemExit(1) from exc
+    return context
+
+
 def serve() -> None:
     port = listening_port()
+    ssl_context = create_ssl_context()
+
     with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as server_sock:
         server_sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
         try:
@@ -45,15 +62,23 @@ def serve() -> None:
             raise
         server_sock.listen(BACKLOG)
         logging.info(
-            "Serwer nasłuchuje na TCP *:%s (backlog=%s)",
+            "Serwer nasłuchuje na TLS *:%s (backlog=%s)",
             port,
             BACKLOG,
         )
 
         while True:
-            conn, addr = server_sock.accept()
-            with conn:
-                logging.info("Zaakceptowano połączenie od %s:%s", addr[0], addr[1])
+            raw_conn, addr = server_sock.accept()
+            try:
+                conn = ssl_context.wrap_socket(raw_conn, server_side=True)
+                with conn:
+                    logging.info("Zaakceptowano połączenie TLS od %s:%s", addr[0], addr[1])
+            except ssl.SSLError as exc:
+                logging.error("Błąd TLS podczas nawiązywania połączenia z %s: %s", addr, exc.reason)
+                raw_conn.close()
+            except Exception as exc:
+                logging.error("Nieoczekiwany błąd podczas akceptowania połączenia od %s: %s", addr, exc)
+                raw_conn.close()
 
 
 def main() -> None:
