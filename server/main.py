@@ -71,8 +71,9 @@ def serve() -> None:
             raw_conn, addr = server_sock.accept()
             try:
                 conn = ssl_context.wrap_socket(raw_conn, server_side=True)
-                with conn:
-                    logging.info("Zaakceptowano połączenie TLS od %s:%s", addr[0], addr[1])
+                from .handlers import ClientSession
+                session = ClientSession(conn, addr)
+                session.handle()
             except ssl.SSLError as exc:
                 logging.error("Błąd TLS podczas nawiązywania połączenia z %s: %s", addr, exc.reason)
                 raw_conn.close()
