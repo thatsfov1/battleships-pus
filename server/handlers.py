@@ -1,10 +1,13 @@
 import logging
 import uuid
 import time
+import socket
+import threading
 from typing import Any
 from . import protocol
 from . import auth
 from . import session
+from . import keepalive
 
 SERVER_VERSION: str = "1.0.0"
 
@@ -16,9 +19,21 @@ class ClientSession:
         self.authenticated = False
         self.auth_attempts = 0
         self.username = None
+        self.stop_event = threading.Event()
+
+    def _send_ack(self, msg_id: str):
+        protocol.send_message(self.conn, {
+            "type": "ACK",
+            "msg_id": msg_id,
+            "timestamp": time.time()
+        })
 
     def handle(self):
         try:
+            self.conn.settimeout(30.0)
+            # Start keepalive thread
+            keepalive.start_keepalive_thread(self.conn, self.session_manager, self.stop_event)
+
             # 1. HELLO Sequence
             msg = protocol.receive_message(self.conn)
             if msg.get("type") != "HELLO":
@@ -38,11 +53,17 @@ class ClientSession:
             # 2. AUTH Sequence
             while self.auth_attempts < 3:
                 msg = protocol.receive_message(self.conn)
-                if msg.get("type") == "ERROR" and msg.get("code") == "INVALID_JSON":
+                msg_type = msg.get("type")
+
+                if msg_type == "ERROR" and msg.get("code") == "INVALID_JSON":
                      return
                 
-                if msg.get("type") != "AUTH":
-                    logging.warning("Klient %s wyslal %s zamiast AUTH", self.addr, msg.get("type"))
+                if msg_type == "PING":
+                    protocol.send_message(self.conn, {"type": "PONG", "msg_id": str(uuid.uuid4()), "timestamp": time.time()})
+                    continue
+
+                if msg_type != "AUTH":
+                    logging.warning("Klient %s wyslal %s zamiast AUTH", self.addr, msg_type)
                     break
 
                 username = msg.get("username")
@@ -78,11 +99,17 @@ class ClientSession:
             while True:
                 msg = protocol.receive_message(self.conn)
                 msg_type = msg.get("type")
+                msg_id = msg.get("msg_id")
                 
                 if msg_type == "ERROR" and msg.get("code") == "INVALID_JSON":
-                    break # Connection closed or invalid protocol
+                    break
+
+                if msg_type == "PING":
+                    protocol.send_message(self.conn, {"type": "PONG", "msg_id": str(uuid.uuid4()), "timestamp": time.time()})
+                    continue
 
                 if msg_type == "CREATE_GAME":
+                    self._send_ack(msg_id)
                     session_id = self.session_manager.create_game(self)
                     if session_id:
                         protocol.send_message(self.conn, {
@@ -100,25 +127,35 @@ class ClientSession:
                         })
 
                 elif msg_type == "JOIN_GAME":
+                    self._send_ack(msg_id)
                     session_id = self.session_manager.join_game(self)
-                    if session_id:
-                         # Serwer wysle GAME_START gdy lobby bedzie pelne
-                         pass
-                    else:
+                    if not session_id:
                         protocol.send_message(self.conn, {
                             "type": "ERROR",
                             "msg_id": str(uuid.uuid4()),
                             "timestamp": time.time(),
                             "message": "Brak wolnych lobby lub jestes juz w sesji."
                         })
-                
+
+                elif msg_type == "MOVE":
+                    self._send_ack(msg_id)
+                    # Handle move logic here
+                    logging.info("Gracz %s wykonal ruch: %s", self.username, msg.get("move"))
+
                 elif msg_type is None: # Connection closed
                     break
                 else:
                     logging.warning("Nieobsługiwany typ komunikatu: %s od %s", msg_type, self.username)
 
+        except socket.timeout:
+            logging.warning("Timeout polaczenia (30s) dla %s", self.username or self.addr)
         except Exception as e:
             logging.error("Blad sesji klienta %s: %s", self.username or self.addr, e)
         finally:
+            self.stop_event.set()
             self.session_manager.remove_player_from_sessions(self)
+            try:
+                self.conn.close()
+            except:
+                pass
             logging.info("Zamkniecie sesji dla %s", self.username or self.addr)
