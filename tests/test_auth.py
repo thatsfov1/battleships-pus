@@ -7,7 +7,6 @@ from server import auth
 class TestAuth(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
-        # Upewnij sie ze baza istnieje i ma dane
         if not os.path.exists("users.db"):
             import init_db
             init_db.init_db()

@@ -1,49 +1,64 @@
-# Statki (Battleships)
+# Statki (Battleships) - Backend Serwer
 
-Gra sieciowa „Statki” z architekturą klient–serwer. Serwer obsługuje szyfrowane połączenia TLS; katalogi `client/` i `tests/` są przygotowane pod dalszy rozwój.
+Serwer gry wieloosobowej "Statki" zaimplementowany w Pythonie, wspierający bezpieczną komunikację TLS, uwierzytelnianie JWT oraz mechanizmy niezawodności połączeń.
 
-## Autorzy
+## Architektura Systemu
 
-- Yevhenii Kulikovskyi  
-- Piotr Nieścior  
+Serwer opiera się na architekturze wielowątkowej (wątek na klienta) i wykorzystuje stos technologiczny:
+- **TLS 1.2+**: Szyfrowanie całej komunikacji.
+- **JWT**: Bezpieczne sesje użytkowników.
+- **SQLite**: Przechowywanie haseł (SHA-256).
+- **Heartbeat (Keepalive)**: Monitorowanie aktywności klientów.
+
+Szczegółowy opis architektury znajduje się w `docs/server_architecture.md`.
+
+## Protokół Komunikacyjny
+
+Komunikacja odbywa się za pomocą wiadomości JSON zakończonych znakiem nowej linii (`\n`). 
+Przykłady komunikatów i flow protokołu dostępne są w `docs/protocol_examples.md`.
+
+## Funkcje
+- **Reconnect**: Możliwość powrotu do gry w ciągu 60 sekund po utracie połączenia.
+- **Security**: Rate limiting, replay attack protection, TLS hardening.
+- **Reliability**: Mechanizm ACK dla kluczowych wiadomości.
+
+## Szybki start (Docker)
+
+1. Skopiuj przykład konfiguracji:
+   ```bash
+   cp .env.example .env
+   ```
+2. Uruchom kontener:
+   ```bash
+   docker-compose up --build
+   ```
+
+## Uruchomienie Lokalne (Makefile)
+
+1. **Inicjalizacja** (instalacja paczek, DB, certyfikaty):
+   ```bash
+   make init
+   ```
+2. **Start serwera**:
+   ```bash
+   make run
+   ```
+3. **Testy**:
+   ```bash
+   make test
+   ```
 
 ## Wymagania
+- Python 3.12+
+- OpenSSL (do certyfikatów)
 
-- Python **3.10** lub nowszy  
-- OpenSSL (do generowania certyfikatów)
-- Pakiety — patrz `requirements.txt` (na razie tylko biblioteka standardowa)
+## Struktura Katalogów
+- `server/`: Kod źródłowy serwera.
+- `certs/`: Skrypt i wygenerowane certyfikaty TLS.
+- `docs/`: Dokumentacja projektu.
+- `logs/`: Logi systemowe (z rotacją).
+- `tests/`: Testy jednostkowe.
 
-## Konfiguracja TLS
-
-Przed pierwszym uruchomieniem serwera należy wygenerować self-signed certyfikat:
-
-```bash
-chmod +x certs/generate_certs.sh
-./certs/generate_certs.sh
-```
-
-Skrypt utworzy pliki `server.key` oraz `server.crt` w katalogu `certs/`.
-
-## Uruchomienie serwera
-
-Z katalogu głównego projektu:
-
-```bash
-python3 -m server.main
-```
-
-Serwer domyślnie nasłuchuje na porcie **5000** i **wymaga połączenia TLS**. Próby połączenia bez szyfrowania zostaną odrzucone. W konsoli pojawiają się wpisy o każdej zaakceptowanej sesji TLS. Zatrzymanie: **Ctrl+C**.
-
-Można zmienić port nasłuchiwania za pomocą zmiennej środowiskowej:
-```bash
-STATKI_PORT=5001 python3 -m server.main
-```
-
-## Struktura katalogów
-
-| Katalog     | Opis                                      |
-|------------|-------------------------------------------|
-| `server/`  | Logika serwera (np. `main.py`)            |
-| `client/`  | Klient gry                                 |
-| `tests/`   | Testy                                      |
-| `certs/`   | Certyfikaty i klucze TLS                   |
+## Autorzy
+- Yevhenii Kulikovskyi
+- Piotr Nieścior

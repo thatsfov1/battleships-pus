@@ -1,2 +1,2 @@
-# Obecnie brak pakietów spoza biblioteki standardowej Pythona.
-# Instalacja: pip install -r requirements.txt  (bez efektu, ale gotowe na przyszłe zależności)
+PyJWT==2.10.1
+python-dotenv==1.0.1

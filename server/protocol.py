@@ -4,29 +4,32 @@ from __future__ import annotations
 
 import json
 import time
-from typing import Any, Final
+from typing import Any, Final, Optional
 
 DELIMITER: Final[bytes] = b"\n"
 ENCODING: Final[str] = "utf-8"
 REQUIRED_FIELDS: Final[set[str]] = {"type", "msg_id", "timestamp"}
 MESSAGE_ID_TTL_SECONDS: Final[int] = 60
+MAX_MESSAGE_SIZE: Final[int] = 8192
 
 INVALID_JSON: Final[str] = "INVALID_JSON"
 INVALID_TYPE: Final[str] = "INVALID_TYPE"
 DUPLICATE_MESSAGE: Final[str] = "DUPLICATE_MESSAGE"
+MESSAGE_TOO_LARGE: Final[str] = "MESSAGE_TOO_LARGE"
 
 _recent_message_ids: dict[Any, float] = {}
 
 
 def send_message(conn: Any, msg_dict: dict[str, Any]) -> None:
-    """Serializuje slownik do JSON i wysyla go przez socket z delimiterem LF"""
     payload = json.dumps(msg_dict, ensure_ascii=False).encode(ENCODING) + DELIMITER
     conn.sendall(payload)
 
 
 def receive_message(conn: Any) -> dict[str, Any]:
-    """Odbiera jedna wiadomosc JSON zakonczona LF i zwraca zdeserializowany slownik"""
     raw_message = _recv_until_delimiter(conn)
+    if raw_message is None:
+        return _error(MESSAGE_TOO_LARGE)
+    
     try:
         message = json.loads(raw_message.decode(ENCODING))
     except (json.JSONDecodeError, UnicodeDecodeError):
@@ -45,12 +48,22 @@ def receive_message(conn: Any) -> dict[str, Any]:
     return message
 
 
-def _recv_until_delimiter(conn: Any) -> bytes:
+def _recv_until_delimiter(conn: Any) -> Optional[bytes]:
     chunks: list[bytes] = []
+    total_size = 0
     while True:
-        chunk = conn.recv(1)
+        try:
+            chunk = conn.recv(1)
+        except Exception:
+            break
+            
         if chunk == b"":
             break
+            
+        total_size += len(chunk)
+        if total_size > MAX_MESSAGE_SIZE:
+            return None
+            
         if chunk == DELIMITER:
             break
         chunks.append(chunk)

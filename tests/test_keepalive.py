@@ -28,11 +28,14 @@ class MockConn:
     def getpeername(self):
         return ("127.0.0.1", 12345)
 
+from server.security import SecurityManager
+
 class TestKeepalive(unittest.TestCase):
     def test_ack_mechanism(self):
         sm = SessionManager()
+        sec = SecurityManager()
         conn = MockConn()
-        session = ClientSession(conn, ("127.0.0.1", 12345), sm)
+        session = ClientSession(conn, ("127.0.0.1", 12345), sm, sec)
         msg_id = "test-id-123"
         session._send_ack(msg_id)
         
@@ -40,8 +43,9 @@ class TestKeepalive(unittest.TestCase):
 
     def test_timeout_configuration(self):
         sm = SessionManager()
+        sec = SecurityManager()
         conn = MockConn()
-        session = ClientSession(conn, ("127.0.0.1", 12345), sm)
+        session = ClientSession(conn, ("127.0.0.1", 12345), sm, sec)
         
         def mock_receive(*args):
             raise socket.timeout()
