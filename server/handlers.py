@@ -22,26 +22,24 @@ class ClientSession:
         self.stop_event = threading.Event()
 
     def _send_ack(self, msg_id: str):
-        protocol.send_message(self.conn, {
-            "type": "ACK",
-            "msg_id": msg_id,
-            "timestamp": time.time()
-        })
+        if msg_id:
+            protocol.send_message(self.conn, {
+                "type": "ACK",
+                "msg_id": msg_id,
+                "timestamp": time.time()
+            })
 
     def handle(self):
         try:
             self.conn.settimeout(30.0)
-            # Start keepalive thread
-            keepalive.start_keepalive_thread(self.conn, self.session_manager, self.stop_event)
+            keepalive.start_keepalive_thread(self.conn, self.stop_event)
 
-            # 1. HELLO Sequence
             msg = protocol.receive_message(self.conn)
             if msg.get("type") != "HELLO":
-                logging.warning("Klient %s nie wyslal HELLO jako pierwszej wiadomosci", self.addr)
+                logging.warning("Klient %s: oczekiwano HELLO", self.addr)
                 return
 
-            client_version = msg.get("client_version")
-            logging.info("Klient %s HELLO (version: %s)", self.addr, client_version)
+            logging.info("Klient %s HELLO (wersja: %s)", self.addr, msg.get("client_version"))
             
             protocol.send_message(self.conn, {
                 "type": "WELCOME",
@@ -50,7 +48,6 @@ class ClientSession:
                 "server_version": SERVER_VERSION
             })
 
-            # 2. AUTH Sequence
             while self.auth_attempts < 3:
                 msg = protocol.receive_message(self.conn)
                 msg_type = msg.get("type")
@@ -63,7 +60,7 @@ class ClientSession:
                     continue
 
                 if msg_type != "AUTH":
-                    logging.warning("Klient %s wyslal %s zamiast AUTH", self.addr, msg_type)
+                    logging.warning("Klient %s: oczekiwano AUTH, otrzymano %s", self.addr, msg_type)
                     break
 
                 username = msg.get("username")
@@ -73,7 +70,7 @@ class ClientSession:
                     self.authenticated = True
                     self.username = username
                     token = auth.generate_token(username)
-                    logging.info("Uzytkownik %s uwierzytelniony pomyslnie (%s)", username, self.addr)
+                    logging.info("Uzytkownik %s zalogowany (%s)", username, self.addr)
                     protocol.send_message(self.conn, {
                         "type": "AUTH_OK",
                         "msg_id": str(uuid.uuid4()),
@@ -83,7 +80,7 @@ class ClientSession:
                     break
                 else:
                     self.auth_attempts += 1
-                    logging.warning("Nieudana proba AUTH (%d/3) dla %s od %s", self.auth_attempts, username, self.addr)
+                    logging.warning("Nieudane logowanie (%d/3) dla %s od %s", self.auth_attempts, username, self.addr)
                     protocol.send_message(self.conn, {
                         "type": "AUTH_FAIL",
                         "msg_id": str(uuid.uuid4()),
@@ -92,10 +89,8 @@ class ClientSession:
                     })
 
             if not self.authenticated:
-                logging.info("Rozlaczanie %s po zbyt wielu nieudanych probach AUTH", self.addr)
                 return
 
-            # 3. Main loop: Game Management
             while True:
                 msg = protocol.receive_message(self.conn)
                 msg_type = msg.get("type")
@@ -108,49 +103,45 @@ class ClientSession:
                     protocol.send_message(self.conn, {"type": "PONG", "msg_id": str(uuid.uuid4()), "timestamp": time.time()})
                     continue
 
-                if msg_type == "CREATE_GAME":
+                if msg_type in ("CREATE_GAME", "JOIN_GAME", "MOVE"):
                     self._send_ack(msg_id)
-                    session_id = self.session_manager.create_game(self)
-                    if session_id:
-                        protocol.send_message(self.conn, {
-                            "type": "GAME_CREATED",
-                            "msg_id": str(uuid.uuid4()),
-                            "timestamp": time.time(),
-                            "session_id": session_id
-                        })
-                    else:
-                        protocol.send_message(self.conn, {
-                            "type": "ERROR",
-                            "msg_id": str(uuid.uuid4()),
-                            "timestamp": time.time(),
-                            "message": "Jestes juz w aktywnej sesji."
-                        })
+                    
+                    if msg_type == "CREATE_GAME":
+                        sid = self.session_manager.create_game(self)
+                        if sid:
+                            protocol.send_message(self.conn, {
+                                "type": "GAME_CREATED",
+                                "msg_id": str(uuid.uuid4()),
+                                "timestamp": time.time(),
+                                "session_id": sid
+                            })
+                        else:
+                            protocol.send_message(self.conn, {
+                                "type": "ERROR",
+                                "msg_id": str(uuid.uuid4()),
+                                "timestamp": time.time(),
+                                "message": "Aktywna sesja juz istnieje"
+                            })
+                    elif msg_type == "JOIN_GAME":
+                        if not self.session_manager.join_game(self):
+                            protocol.send_message(self.conn, {
+                                "type": "ERROR",
+                                "msg_id": str(uuid.uuid4()),
+                                "timestamp": time.time(),
+                                "message": "Brak wolnych gier"
+                            })
+                    elif msg_type == "MOVE":
+                        logging.info("Ruch gracza %s: %s", self.username, msg.get("move"))
 
-                elif msg_type == "JOIN_GAME":
-                    self._send_ack(msg_id)
-                    session_id = self.session_manager.join_game(self)
-                    if not session_id:
-                        protocol.send_message(self.conn, {
-                            "type": "ERROR",
-                            "msg_id": str(uuid.uuid4()),
-                            "timestamp": time.time(),
-                            "message": "Brak wolnych lobby lub jestes juz w sesji."
-                        })
-
-                elif msg_type == "MOVE":
-                    self._send_ack(msg_id)
-                    # Handle move logic here
-                    logging.info("Gracz %s wykonal ruch: %s", self.username, msg.get("move"))
-
-                elif msg_type is None: # Connection closed
+                elif msg_type is None:
                     break
                 else:
-                    logging.warning("Nieobsługiwany typ komunikatu: %s od %s", msg_type, self.username)
+                    logging.warning("Nieobsługiwany typ: %s od %s", msg_type, self.username)
 
         except socket.timeout:
             logging.warning("Timeout polaczenia (30s) dla %s", self.username or self.addr)
         except Exception as e:
-            logging.error("Blad sesji klienta %s: %s", self.username or self.addr, e)
+            logging.error("Blad sesji %s: %s", self.username or self.addr, e)
         finally:
             self.stop_event.set()
             self.session_manager.remove_player_from_sessions(self)
@@ -158,4 +149,4 @@ class ClientSession:
                 self.conn.close()
             except:
                 pass
-            logging.info("Zamkniecie sesji dla %s", self.username or self.addr)
+            logging.info("Sesja zakonczona: %s", self.username or self.addr)
