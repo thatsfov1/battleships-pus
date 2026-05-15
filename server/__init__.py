@@ -1,0 +1,1 @@
+"""Pakiet serwera gry Statki."""
