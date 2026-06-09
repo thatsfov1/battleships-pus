@@ -4,9 +4,11 @@ import { sha256Hex } from './crypto'
 import { emptyBoard, withCell } from './boards'
 import Login from './Login'
 import Lobby from './Lobby'
+import Placement from './Placement'
 import Game from './Game'
 
 const HIT_MARKS = new Set(['HIT', 'SUNK'])
+const DEFAULT_FLEET = [4, 3, 3, 3, 2]
 
 // Fazy aplikacji: login -> lobby -> game.
 export default function App() {
@@ -15,6 +17,8 @@ export default function App() {
   const [error, setError] = useState(null)
   const [busy, setBusy] = useState(false)
   const [lobbyStatus, setLobbyStatus] = useState('idle') // idle | waiting
+  const [fleet, setFleet] = useState(DEFAULT_FLEET)
+  const [placementBusy, setPlacementBusy] = useState(false)
   const [game, setGame] = useState(null)
   const [notice, setNotice] = useState(null)
   const tokenRef = useRef(null)
@@ -43,6 +47,13 @@ export default function App() {
         setLobbyStatus('waiting')
         setError(null)
         break
+      case 'PLACEMENT':
+        setFleet(msg.fleet || DEFAULT_FLEET)
+        setLobbyStatus('idle')
+        setPlacementBusy(false)
+        setError(null)
+        setPhase('placement')
+        break
       case 'GAME_START':
         setGame({
           sessionId: msg.session_id,
@@ -52,6 +63,7 @@ export default function App() {
           tracking: emptyBoard(),
         })
         setLobbyStatus('idle')
+        setPlacementBusy(false)
         setError(null)
         setPhase('game')
         break
@@ -74,6 +86,9 @@ export default function App() {
       case 'ERROR':
         if (phaseRef.current === 'game') {
           setNotice(msg.message || msg.code)
+        } else if (phaseRef.current === 'placement') {
+          setPlacementBusy(false)
+          setError(msg.message || msg.code)
         } else {
           setBusy(false)
           setLobbyStatus('idle')
@@ -129,6 +144,15 @@ export default function App() {
     [send],
   )
 
+  const handlePlacement = useCallback(
+    (ships) => {
+      setPlacementBusy(true)
+      setError(null)
+      send('PLACE_SHIPS', { ships })
+    },
+    [send],
+  )
+
   const backToLobby = useCallback(() => {
     setGame(null)
     setNotice(null)
@@ -151,6 +175,9 @@ export default function App() {
           onJoin={handleJoin}
           error={error}
         />
+      )}
+      {phase === 'placement' && (
+        <Placement fleet={fleet} onConfirm={handlePlacement} busy={placementBusy} error={error} />
       )}
       {phase === 'game' && game && (
         <Game
