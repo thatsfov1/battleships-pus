@@ -1,31 +1,76 @@
-import { useCallback, useEffect, useState } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 import { useGameSocket } from './useGameSocket'
+import { sha256Hex } from './crypto'
+import Login from './Login'
 
-// Szkielet aplikacji (punkt 2). Kolejne punkty dodaja ekrany logowania,
-// lobby i rozgrywki. Na razie pokazuje stan polaczenia z mostem.
+// Fazy aplikacji: login -> lobby -> game. Kolejne punkty rozwijaja lobby i gre.
 export default function App() {
-  const [lastType, setLastType] = useState(null)
+  const [phase, setPhase] = useState('login')
+  const [username, setUsername] = useState('')
+  const [error, setError] = useState(null)
+  const [busy, setBusy] = useState(false)
+  const tokenRef = useRef(null)
 
   const onMessage = useCallback((msg) => {
-    setLastType(msg.type)
+    switch (msg.type) {
+      case 'WELCOME':
+        break
+      case 'AUTH_OK':
+        tokenRef.current = msg.token || null
+        setBusy(false)
+        setError(null)
+        setPhase('lobby')
+        break
+      case 'AUTH_FAIL':
+        setBusy(false)
+        setError(msg.reason || 'Logowanie odrzucone.')
+        break
+      case 'ERROR':
+        setBusy(false)
+        setError(msg.message || msg.code)
+        break
+      case '__DISCONNECTED__':
+        setError('Utracono połączenie z mostem.')
+        setPhase('login')
+        break
+      default:
+        break
+    }
   }, [])
 
-  const { connected, connect } = useGameSocket(onMessage)
+  const { connected, connect, send } = useGameSocket(onMessage)
 
   useEffect(() => {
     connect()
   }, [connect])
 
+  useEffect(() => {
+    if (connected) send('HELLO', { client_version: '1.0.0' })
+  }, [connected, send])
+
+  const handleLogin = useCallback(
+    async (user, password) => {
+      setBusy(true)
+      setError(null)
+      setUsername(user)
+      const hash = await sha256Hex(password)
+      send('AUTH', { username: user, password_hash: hash })
+    },
+    [send],
+  )
+
   return (
     <div className="app">
-      <h1>Statki</h1>
-      <p>
-        Most:{' '}
-        <span className={connected ? 'ok' : 'bad'}>
-          {connected ? 'połączono' : 'rozłączono'}
-        </span>
-      </p>
-      {lastType && <p className="muted">Ostatni komunikat: {lastType}</p>}
+      <h1>STATKI</h1>
+      {phase === 'login' && (
+        <Login onSubmit={handleLogin} error={error} busy={busy} connected={connected} />
+      )}
+      {phase === 'lobby' && (
+        <div className="card">
+          <h2>Witaj, {username}!</h2>
+          <p className="muted">Zalogowano. Lobby pojawi się w kolejnym kroku.</p>
+        </div>
+      )}
     </div>
   )
 }
