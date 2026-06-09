@@ -24,6 +24,7 @@ export default function App() {
   const tokenRef = useRef(null)
   const usernameRef = useRef('')
   const phaseRef = useRef('login')
+  const fleetCountRef = useRef(DEFAULT_FLEET.length)
 
   useEffect(() => {
     phaseRef.current = phase
@@ -49,6 +50,7 @@ export default function App() {
         break
       case 'PLACEMENT':
         setFleet(msg.fleet || DEFAULT_FLEET)
+        fleetCountRef.current = (msg.fleet || DEFAULT_FLEET).length
         setLobbyStatus('idle')
         setPlacementBusy(false)
         setError(null)
@@ -61,6 +63,9 @@ export default function App() {
           currentTurn: msg.current_turn,
           own: msg.your_board || emptyBoard(),
           tracking: emptyBoard(),
+          enemySunk: 0,
+          mySunk: 0,
+          fleetCount: fleetCountRef.current,
         })
         setLobbyStatus('idle')
         setPlacementBusy(false)
@@ -71,11 +76,22 @@ export default function App() {
         setNotice(null)
         setGame((prev) => {
           if (!prev) return prev
-          const mark = HIT_MARKS.has(msg.result) ? 'X' : 'o'
+          const sunk = msg.result === 'SUNK'
+          const mark = sunk ? 'sunk' : HIT_MARKS.has(msg.result) ? 'X' : 'o'
           if (msg.by === usernameRef.current) {
-            return { ...prev, tracking: withCell(prev.tracking, msg.x, msg.y, mark), currentTurn: msg.next_turn }
+            return {
+              ...prev,
+              tracking: withCell(prev.tracking, msg.x, msg.y, mark),
+              currentTurn: msg.next_turn,
+              enemySunk: prev.enemySunk + (sunk ? 1 : 0),
+            }
           }
-          return { ...prev, own: withCell(prev.own, msg.x, msg.y, mark), currentTurn: msg.next_turn }
+          return {
+            ...prev,
+            own: withCell(prev.own, msg.x, msg.y, mark),
+            currentTurn: msg.next_turn,
+            mySunk: prev.mySunk + (sunk ? 1 : 0),
+          }
         })
         break
       case 'GAME_END':

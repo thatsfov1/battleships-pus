@@ -1,5 +1,21 @@
 import Board from './Board'
 
+function ScoreCounter({ label, value, total, danger }) {
+  return (
+    <div className={`score ${danger ? 'danger' : ''}`}>
+      <span className="score-label">{label}</span>
+      <span className="score-value" key={value}>
+        {value}/{total}
+      </span>
+      <span className="pips">
+        {Array.from({ length: total }, (_, i) => (
+          <i key={i} className={`pip ${i < value ? 'on' : ''}`} />
+        ))}
+      </span>
+    </div>
+  )
+}
+
 function resultText(result, username) {
   if (!result) return ''
   const reason = result.reason === 'DISCONNECT' ? ' (przeciwnik się rozłączył)' : ''
@@ -23,6 +39,11 @@ export default function Game({ game, username, onFire, notice, onBack }) {
       </div>
 
       {notice && <div className="notice">{notice}</div>}
+
+      <div className="counters">
+        <ScoreCounter label="Zatopione przeciwnika" value={game.enemySunk} total={game.fleetCount} />
+        <ScoreCounter label="Twoje straty" value={game.mySunk} total={game.fleetCount} danger />
+      </div>
 
       <div className="boards">
         <Board board={game.own} title="Twoja plansza" />

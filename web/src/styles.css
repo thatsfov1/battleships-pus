@@ -143,6 +143,41 @@ button.secondary { background: transparent; color: var(--accent); border: 1px so
 .cell.hit { background: var(--hit); border-color: var(--hit); }
 .cell.miss { background: var(--miss); border-color: var(--miss); }
 
+.cell.sunk {
+  background: #7a1115;
+  border-color: var(--hit);
+  font-size: 0.95rem;
+  line-height: 1;
+  animation: boom 0.55s ease-out;
+}
+
+@keyframes boom {
+  0% { transform: scale(0.4); box-shadow: 0 0 0 0 rgba(229, 72, 77, 0.9); }
+  50% { transform: scale(1.35); box-shadow: 0 0 14px 6px rgba(229, 72, 77, 0.7); }
+  100% { transform: scale(1); box-shadow: 0 0 0 0 rgba(229, 72, 77, 0); }
+}
+
+/* liczniki zatopionych */
+.counters { display: flex; gap: 28px; flex-wrap: wrap; justify-content: center; }
+.score {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 4px;
+  padding: 8px 16px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: var(--panel);
+}
+.score-label { font-size: 0.8rem; color: var(--muted); }
+.score-value { font-size: 1.5rem; font-weight: 800; color: var(--ship); animation: pop 0.35s ease-out; }
+.score.danger .score-value { color: var(--hit); }
+@keyframes pop { 0% { transform: scale(1.6); } 100% { transform: scale(1); } }
+.pips { display: flex; gap: 4px; }
+.pip { width: 12px; height: 12px; border-radius: 3px; background: #0d161f; border: 1px solid var(--line); }
+.pip.on { background: var(--ship); border-color: var(--ship); }
+.score.danger .pip.on { background: var(--hit); border-color: var(--hit); }
+
 .cell.preview-ok { background: rgba(47, 158, 110, 0.5); border-color: var(--ship); }
 .cell.preview-bad { background: rgba(229, 72, 77, 0.5); border-color: var(--hit); }
 

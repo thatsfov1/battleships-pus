@@ -6,6 +6,7 @@ const CELL_CLASS = {
   S: 'ship',
   X: 'hit',
   o: 'miss',
+  sunk: 'sunk',
 }
 
 export default function Board({ board, title, clickable = false, onCell }) {
@@ -32,7 +33,9 @@ export default function Board({ board, title, clickable = false, onCell }) {
                   disabled={!firable}
                   onClick={() => firable && onCell(x, y)}
                   aria-label={`${COLS[x]}${y + 1}`}
-                />
+                >
+                  {value === 'sunk' ? '💥' : ''}
+                </button>
               )
             })}
           </Fragment>
