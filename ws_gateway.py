@@ -15,9 +15,14 @@ import logging
 import os
 import threading
 
+from dotenv import load_dotenv
 from websockets.sync.server import serve
 
 from client.network import NetworkClient, DISCONNECTED
+
+# Pozwala wskazac adres serwera gry przez plik .env (BS_HOST / BS_PORT),
+# dzieki czemu most moze laczyc sie ze zdalnym, publicznym serwerem.
+load_dotenv()
 
 GW_HOST = os.getenv("GW_HOST", "localhost")
 GW_PORT = int(os.getenv("GW_PORT", "8765"))
