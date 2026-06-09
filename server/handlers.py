@@ -32,6 +32,37 @@ class ClientSession:
                 "timestamp": time.time()
             })
 
+    def _send_error(self, code: str, message: str):
+        protocol.send_message(self.conn, {
+            "type": "ERROR",
+            "msg_id": str(uuid.uuid4()),
+            "timestamp": time.time(),
+            "code": code,
+            "message": message,
+        })
+
+    @staticmethod
+    def _extract_coords(msg: dict):
+        """Wyciaga (x, y) z komunikatu MOVE. Obsluguje pola plaskie oraz
+        zagniezdzone w 'move'/'payload'. Zwraca None gdy brak/niepoprawne."""
+        source = msg
+        for key in ("move", "payload"):
+            if isinstance(msg.get(key), dict):
+                source = msg[key]
+                break
+        x, y = source.get("x"), source.get("y")
+        if isinstance(x, bool) or isinstance(y, bool):
+            return None
+        if isinstance(x, int) and isinstance(y, int):
+            return x, y
+        return None
+
+    _MOVE_ERROR_MESSAGES = {
+        "SESSION_NOT_FOUND": "Nie znaleziono aktywnej sesji.",
+        "NOT_YOUR_TURN": "Nie mozesz wykonac ruchu w tej turze.",
+        "INVALID_MOVE": "Niepoprawny ruch.",
+    }
+
     def handle(self):
         try:
             self.conn.settimeout(30.0)
@@ -62,6 +93,10 @@ class ClientSession:
                 if self.security_manager.is_rate_limited(self.addr[0]):
                     protocol.send_message(self.conn, {"type": "ERROR", "code": "RATE_LIMIT"})
                     return
+
+                if msg_type == "BYE":
+                    logging.info(f"BYE od {self.addr} ({self.username})")
+                    break
 
                 if not self.authenticated:
                     if msg_type == "HELLO":
@@ -109,6 +144,14 @@ class ClientSession:
                         elif msg_type == "JOIN_GAME":
                             if not self.session_manager.join_game(self):
                                 protocol.send_message(self.conn, {"type": "ERROR", "message": "No games found"})
+                        elif msg_type == "MOVE":
+                            coords = self._extract_coords(msg)
+                            if coords is None:
+                                self._send_error("INVALID_MOVE", "Brak lub niepoprawne wspolrzedne ruchu.")
+                            else:
+                                error = self.session_manager.handle_move(self, coords[0], coords[1])
+                                if error:
+                                    self._send_error(error, self._MOVE_ERROR_MESSAGES.get(error, "Blad ruchu."))
                     elif msg_type is None:
                         break
 
