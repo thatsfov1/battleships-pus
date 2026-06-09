@@ -4,6 +4,7 @@ import logging
 import threading
 from typing import Dict, Optional, Any
 from . import protocol
+from . import game
 
 class GameSession:
     def __init__(self, session_id: str):
@@ -27,13 +28,31 @@ class GameSession:
                 self.current_turn = self.players[0].username
             return True
 
+    def opponent_of(self, username: str):
+        for p in self.players:
+            if p.username != username:
+                return p
+        return None
+
+    def setup_boards(self) -> None:
+        """Rozstawia floty obu graczy na poczatku rozgrywki."""
+        self.boards = {}
+        for p in self.players:
+            board = game.Board()
+            board.place_fleet()
+            self.boards[p.username] = board
+
     def get_state(self, username: str) -> dict:
+        own = self.boards.get(username)
+        opponent = self.opponent_of(username)
+        tracking = self.boards.get(opponent.username) if opponent else None
         return {
             "session_id": self.session_id,
             "current_turn": self.current_turn,
-            "board": self.boards.get(username, []),
+            "status": self.status,
+            "your_board": own.own_view() if own else [],
+            "tracking_board": tracking.tracking_view() if tracking else [],
             "history": self.history,
-            "status": self.status
         }
 
 class SessionManager:
@@ -91,14 +110,98 @@ class SessionManager:
     def _check_start_game(self, session: GameSession):
         if session.is_full() and session.status == "LOBBY":
             session.status = "IN_PROGRESS"
+            session.setup_boards()
             for p in session.players:
                 protocol.send_message(p.conn, {
                     "type": "GAME_START",
                     "msg_id": str(uuid.uuid4()),
                     "timestamp": time.time(),
                     "session_id": session.session_id,
-                    "players": [player.username for player in session.players]
+                    "players": [player.username for player in session.players],
+                    "current_turn": session.current_turn,
+                    "your_board": session.boards[p.username].own_view(),
                 })
+
+    def handle_move(self, player, x: int, y: int) -> Optional[str]:
+        """Przetwarza ruch gracza. Zwraca kod bledu lub None przy sukcesie.
+
+        Przy powodzeniu rozsyla MOVE_RESULT do obu graczy, a po zatopieniu
+        ostatniego statku rowniez GAME_END i usuwa sesje.
+        """
+        with self.lock:
+            session = self._find_active_session(player.username)
+        if session is None:
+            return "SESSION_NOT_FOUND"
+
+        finished_winner = None
+        with session.lock:
+            if session.status != "IN_PROGRESS":
+                return "SESSION_NOT_FOUND"
+            if session.current_turn != player.username:
+                return "NOT_YOUR_TURN"
+
+            opponent = session.opponent_of(player.username)
+            if opponent is None:
+                return "SESSION_NOT_FOUND"
+
+            target = session.boards.get(opponent.username)
+            if target is None or not target.in_bounds(x, y) or target.already_shot(x, y):
+                return "INVALID_MOVE"
+
+            result = target.receive_shot(x, y)
+            session.history.append({"by": player.username, "x": x, "y": y, "result": result})
+
+            if target.all_sunk():
+                session.status = "FINISHED"
+                finished_winner = player.username
+                next_turn = None
+            else:
+                session.current_turn = opponent.username
+                next_turn = session.current_turn
+
+            move_result = {
+                "type": "MOVE_RESULT",
+                "msg_id": str(uuid.uuid4()),
+                "timestamp": time.time(),
+                "x": x,
+                "y": y,
+                "result": result,
+                "by": player.username,
+                "next_turn": next_turn,
+            }
+            recipients = list(session.players)
+
+        for p in recipients:
+            try:
+                protocol.send_message(p.conn, move_result)
+            except Exception:
+                pass
+
+        if finished_winner is not None:
+            self._broadcast_game_end(session, recipients, "VICTORY", finished_winner)
+        return None
+
+    def _find_active_session(self, username: str) -> Optional[GameSession]:
+        for session in self.sessions.values():
+            if session.status != "FINISHED" and any(p.username == username for p in session.players):
+                return session
+        return None
+
+    def _broadcast_game_end(self, session, recipients, reason, winner):
+        end_msg = {
+            "type": "GAME_END",
+            "msg_id": str(uuid.uuid4()),
+            "timestamp": time.time(),
+            "reason": reason,
+            "winner": winner,
+        }
+        for p in recipients:
+            try:
+                protocol.send_message(p.conn, end_msg)
+            except Exception:
+                pass
+        with self.lock:
+            self.sessions.pop(session.session_id, None)
 
     def remove_player_from_sessions(self, player):
         with self.lock:
@@ -114,17 +217,22 @@ class SessionManager:
                                 if session_id in self.sessions:
                                     del self.sessions[session_id]
 
-    def force_terminate_session(self, session_id, reason):
+    def force_terminate_session(self, session_id, reason, loser_username=None):
         with self.lock:
             if session_id in self.sessions:
                 session = self.sessions[session_id]
+                winner = None
+                if loser_username is not None:
+                    opp = session.opponent_of(loser_username)
+                    winner = opp.username if opp else None
                 for p in session.players:
                     try:
                         protocol.send_message(p.conn, {
                             "type": "GAME_END",
                             "msg_id": str(uuid.uuid4()),
                             "timestamp": time.time(),
-                            "reason": reason
+                            "reason": reason,
+                            "winner": winner,
                         })
                     except:
                         pass

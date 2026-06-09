@@ -43,10 +43,10 @@ class ReconnectManager:
                 users_to_remove = []
                 for user, data in self.disconnected_players.items():
                     if now - data["timestamp"] > self.reconnect_timeout:
-                        to_terminate.append(data["session_id"])
+                        to_terminate.append((data["session_id"], user))
                         users_to_remove.append(user)
                 for user in users_to_remove:
                     del self.disconnected_players[user]
-            
-            for sid in to_terminate:
-                self.session_manager.force_terminate_session(sid, "DISCONNECT")
+
+            for sid, loser in to_terminate:
+                self.session_manager.force_terminate_session(sid, "DISCONNECT", loser)
