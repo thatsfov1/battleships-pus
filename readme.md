@@ -1,6 +1,6 @@
-# Statki (Battleships) - Backend Serwer
+# Statki (Battleships) - Serwer + Klient CLI
 
-Serwer gry wieloosobowej "Statki" zaimplementowany w Pythonie, wspierający bezpieczną komunikację TLS, uwierzytelnianie JWT oraz mechanizmy niezawodności połączeń.
+Gra wieloosobowa "Statki" zaimplementowana w Pythonie: serwer TCP/TLS oraz tekstowy klient CLI, wspierające bezpieczną komunikację TLS, uwierzytelnianie JWT oraz mechanizmy niezawodności połączeń.
 
 ## Architektura Systemu
 
@@ -18,9 +18,11 @@ Komunikacja odbywa się za pomocą wiadomości JSON zakończonych znakiem nowej 
 Przykłady komunikatów i flow protokołu dostępne są w `docs/protocol_examples.md`.
 
 ## Funkcje
-- **Reconnect**: Możliwość powrotu do gry w ciągu 60 sekund po utracie połączenia.
+- **Rozgrywka 2-osobowa**: Pełna logika Statków — losowe rozstawienie floty (`5,4,3,3,2`) na planszy 10×10, strzały z wynikiem `HIT`/`MISS`/`SUNK`, naprzemienne tury, wykrywanie zwycięstwa.
+- **Klient CLI**: Logowanie, lobby (utwórz/dołącz), render obu plansz, wprowadzanie strzałów w formacie `B5`.
+- **Reconnect**: Możliwość powrotu do gry w ciągu 60 sekund po utracie połączenia (walkower po przekroczeniu czasu).
 - **Security**: Rate limiting, replay attack protection, TLS hardening.
-- **Reliability**: Mechanizm ACK dla kluczowych wiadomości.
+- **Reliability**: Mechanizm ACK dla kluczowych wiadomości, keep-alive PING/PONG, serializacja zapisu TLS per-połączenie.
 
 ## Szybki start (Docker)
 
@@ -43,7 +45,14 @@ Przykłady komunikatów i flow protokołu dostępne są w `docs/protocol_example
    ```bash
    make run
    ```
-3. **Testy**:
+3. **Start klienta** (w osobnym terminalu, dla każdego gracza):
+   ```bash
+   make run-client
+   # lub: python -m client.main [host] [port]
+   ```
+   Domyślnie łączy się z `localhost:5000`. Konta testowe: `user1/pass1`, `user2/pass2`.
+   Aby zagrać partię, uruchom dwóch klientów: jeden wybiera „Utwórz grę", drugi „Dołącz do gry".
+4. **Testy**:
    ```bash
    make test
    ```
@@ -53,7 +62,8 @@ Przykłady komunikatów i flow protokołu dostępne są w `docs/protocol_example
 - OpenSSL (do certyfikatów)
 
 ## Struktura Katalogów
-- `server/`: Kod źródłowy serwera.
+- `server/`: Kod źródłowy serwera (sieć, protokół, sesje, silnik gry `game.py`).
+- `client/`: Klient CLI (`network.py` — warstwa sieciowa, `game_ui.py` — render/parsowanie, `main.py` — pętla gry).
 - `certs/`: Skrypt i wygenerowane certyfikaty TLS.
 - `docs/`: Dokumentacja projektu.
 - `logs/`: Logi systemowe (z rotacją).

@@ -69,7 +69,8 @@ Utworzenie nowej sesji.
 ```
 
 ## 4. MOVE
-Wykonanie ruchu w grze.
+Wykonanie ruchu w grze. Współrzędne podawane są jako pola `x`, `y` (0–9) na
+najwyższym poziomie wiadomości.
 
 **Klient -> Serwer:**
 ```json
@@ -77,11 +78,12 @@ Wykonanie ruchu w grze.
   "type": "MOVE",
   "msg_id": "4",
   "timestamp": 1715781020,
-  "move": {"x": 5, "y": 2}
+  "x": 5,
+  "y": 2
 }
 ```
 
-**Serwer -> Klient:**
+**Serwer -> Klient (potwierdzenie odbioru):**
 ```json
 {
   "type": "ACK",
@@ -90,7 +92,41 @@ Wykonanie ruchu w grze.
 }
 ```
 
-## 5. GAME_END
+**Serwer -> obaj gracze (wynik ruchu):**
+```json
+{
+  "type": "MOVE_RESULT",
+  "msg_id": "uuid-mr",
+  "timestamp": 1715781022,
+  "x": 5,
+  "y": 2,
+  "result": "HIT",
+  "by": "user1",
+  "next_turn": "user2"
+}
+```
+`result` przyjmuje wartości `HIT`, `MISS` lub `SUNK`. Pole `by` wskazuje
+strzelającego, a `next_turn` gracza, do którego należy kolejna tura
+(`null` po zakończeniu gry).
+
+## 5. GAME_START
+Rozpoczęcie rozgrywki po dołączeniu drugiego gracza. Serwer dołącza własną
+planszę gracza (`your_board`) oraz informację, czyja jest pierwsza tura.
+
+**Serwer -> obaj gracze:**
+```json
+{
+  "type": "GAME_START",
+  "msg_id": "uuid-gs",
+  "timestamp": 1715781015,
+  "session_id": "game123",
+  "players": ["user1", "user2"],
+  "current_turn": "user1",
+  "your_board": [["", "S", "S", "..."]]
+}
+```
+
+## 6. GAME_END
 Zakończenie gry.
 
 **Serwer -> Klient:**
@@ -104,8 +140,9 @@ Zakończenie gry.
 }
 ```
 
-## 6. ERROR
-Komunikaty błędów.
+## 7. ERROR
+Komunikaty błędów. Kody m.in.: `NOT_YOUR_TURN`, `INVALID_MOVE`,
+`SESSION_NOT_FOUND`, `RATE_LIMIT`, `DUPLICATE_MESSAGE`, `INVALID_JSON`.
 
 **Serwer -> Klient:**
 ```json
@@ -115,5 +152,18 @@ Komunikaty błędów.
   "timestamp": 1715781200,
   "code": "RATE_LIMIT",
   "message": "Too many requests"
+}
+```
+
+## 8. BYE
+Poprawne zakończenie sesji przez klienta (graceful disconnect). Po odebraniu
+`BYE` serwer zamyka połączenie TCP/TLS.
+
+**Klient -> Serwer:**
+```json
+{
+  "type": "BYE",
+  "msg_id": "99",
+  "timestamp": 1715781300
 }
 ```

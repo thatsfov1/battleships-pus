@@ -1,6 +1,9 @@
 run:
 	python3 -m server.main
 
+run-client:
+	python3 -m client.main
+
 test:
 	python3 -m unittest discover tests
 
