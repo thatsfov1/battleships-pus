@@ -1,9 +1,12 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { useGameSocket } from './useGameSocket'
 import { sha256Hex } from './crypto'
-import { emptyBoard } from './boards'
+import { emptyBoard, withCell } from './boards'
 import Login from './Login'
 import Lobby from './Lobby'
+import Game from './Game'
+
+const HIT_MARKS = new Set(['HIT', 'SUNK'])
 
 // Fazy aplikacji: login -> lobby -> game.
 export default function App() {
@@ -14,6 +17,7 @@ export default function App() {
   const [lobbyStatus, setLobbyStatus] = useState('idle') // idle | waiting
   const [game, setGame] = useState(null)
   const tokenRef = useRef(null)
+  const usernameRef = useRef('')
 
   const onMessage = useCallback((msg) => {
     switch (msg.type) {
@@ -45,6 +49,16 @@ export default function App() {
         setError(null)
         setPhase('game')
         break
+      case 'MOVE_RESULT':
+        setGame((prev) => {
+          if (!prev) return prev
+          const mark = HIT_MARKS.has(msg.result) ? 'X' : 'o'
+          if (msg.by === usernameRef.current) {
+            return { ...prev, tracking: withCell(prev.tracking, msg.x, msg.y, mark), currentTurn: msg.next_turn }
+          }
+          return { ...prev, own: withCell(prev.own, msg.x, msg.y, mark), currentTurn: msg.next_turn }
+        })
+        break
       case 'ERROR':
         setBusy(false)
         setLobbyStatus('idle')
@@ -75,6 +89,7 @@ export default function App() {
       setBusy(true)
       setError(null)
       setUsername(user)
+      usernameRef.current = user
       const hash = await sha256Hex(password)
       send('AUTH', { username: user, password_hash: hash })
     },
@@ -90,6 +105,13 @@ export default function App() {
     setError(null)
     send('JOIN_GAME')
   }, [send])
+
+  const handleFire = useCallback(
+    (x, y) => {
+      send('MOVE', { x, y })
+    },
+    [send],
+  )
 
   return (
     <div className="app">
@@ -107,12 +129,7 @@ export default function App() {
         />
       )}
       {phase === 'game' && game && (
-        <div className="card">
-          <h2>Gra wystartowała</h2>
-          <p className="muted">
-            Tura: {game.currentTurn}. Plansze pojawią się w kolejnym kroku.
-          </p>
-        </div>
+        <Game game={game} username={username} onFire={handleFire} />
       )}
     </div>
   )

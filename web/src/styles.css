@@ -94,3 +94,62 @@ button.secondary { background: transparent; color: var(--accent); border: 1px so
 }
 
 @keyframes spin { to { transform: rotate(360deg); } }
+
+/* --- rozgrywka --- */
+.game { display: flex; flex-direction: column; align-items: center; gap: 18px; }
+
+.turn {
+  padding: 10px 18px;
+  border-radius: 8px;
+  font-weight: 700;
+  letter-spacing: 0.5px;
+}
+.turn.mine { background: rgba(47, 158, 110, 0.18); color: var(--ship); border: 1px solid var(--ship); }
+.turn.theirs { background: rgba(138, 160, 178, 0.12); color: var(--muted); border: 1px solid var(--line); }
+
+.boards { display: flex; gap: 28px; flex-wrap: wrap; justify-content: center; }
+
+.board-wrap { text-align: center; }
+.board-wrap h3 { margin: 0 0 10px; font-size: 1rem; color: var(--muted); }
+
+.board {
+  display: grid;
+  grid-template-columns: repeat(11, 30px);
+  grid-auto-rows: 30px;
+  gap: 2px;
+}
+
+.cell {
+  width: 30px;
+  height: 30px;
+  border-radius: 4px;
+  border: 1px solid var(--line);
+  background: #0d161f;
+  padding: 0;
+}
+
+.cell.head {
+  border: none;
+  background: transparent;
+  color: var(--muted);
+  font-size: 0.8rem;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.cell.empty { background: #0d161f; }
+.cell.ship { background: var(--ship); border-color: var(--ship); }
+.cell.hit { background: var(--hit); border-color: var(--hit); }
+.cell.miss { background: var(--miss); border-color: var(--miss); }
+
+.cell.firable { cursor: pointer; }
+.cell.firable:hover { outline: 2px solid var(--accent); outline-offset: -2px; }
+button.cell:disabled { cursor: default; opacity: 1; }
+
+.legend { display: flex; gap: 18px; color: var(--muted); font-size: 0.85rem; }
+.legend span { display: flex; align-items: center; gap: 6px; }
+.swatch { width: 14px; height: 14px; border-radius: 3px; display: inline-block; }
+.swatch.ship { background: var(--ship); }
+.swatch.hit { background: var(--hit); }
+.swatch.miss { background: var(--miss); }
