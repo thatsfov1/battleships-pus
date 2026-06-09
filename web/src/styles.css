@@ -1,0 +1,32 @@
+:root {
+  --bg: #0f1923;
+  --panel: #16222e;
+  --line: #2a3a4a;
+  --text: #e6edf3;
+  --muted: #8aa0b2;
+  --accent: #3da9fc;
+  --hit: #e5484d;
+  --miss: #4a6075;
+  --ship: #2f9e6e;
+}
+
+* { box-sizing: border-box; }
+
+body {
+  margin: 0;
+  font-family: 'Segoe UI', system-ui, sans-serif;
+  background: var(--bg);
+  color: var(--text);
+}
+
+.app {
+  max-width: 920px;
+  margin: 0 auto;
+  padding: 24px 16px 48px;
+}
+
+h1 { text-align: center; letter-spacing: 2px; }
+
+.ok { color: var(--ship); font-weight: 600; }
+.bad { color: var(--hit); font-weight: 600; }
+.muted { color: var(--muted); }
