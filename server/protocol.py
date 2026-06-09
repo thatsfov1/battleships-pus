@@ -3,7 +3,9 @@
 from __future__ import annotations
 
 import json
+import threading
 import time
+import weakref
 from typing import Any, Final, Optional
 
 DELIMITER: Final[bytes] = b"\n"
@@ -19,10 +21,32 @@ MESSAGE_TOO_LARGE: Final[str] = "MESSAGE_TOO_LARGE"
 
 _recent_message_ids: dict[Any, float] = {}
 
+# Lock zapisu per-polaczenie. Do jednego conn pisze wiele watkow (handler,
+# keepalive, broadcasty innych graczy) — rownoczesne sendall na obiekcie SSL
+# korumpuje rekordy TLS. Serializujemy zapisy bez serializowania odczytu.
+_send_locks: "weakref.WeakKeyDictionary[Any, threading.Lock]" = weakref.WeakKeyDictionary()
+_send_locks_guard = threading.Lock()
+
+
+def _send_lock_for(conn: Any) -> threading.Lock:
+    with _send_locks_guard:
+        lock = _send_locks.get(conn)
+        if lock is None:
+            lock = threading.Lock()
+            _send_locks[conn] = lock
+        return lock
+
 
 def send_message(conn: Any, msg_dict: dict[str, Any]) -> None:
     payload = json.dumps(msg_dict, ensure_ascii=False).encode(ENCODING) + DELIMITER
-    conn.sendall(payload)
+    try:
+        lock = _send_lock_for(conn)
+    except TypeError:
+        # obiekt nie obsluguje weakref (np. niektore mocki w testach)
+        conn.sendall(payload)
+        return
+    with lock:
+        conn.sendall(payload)
 
 
 def receive_message(conn: Any) -> dict[str, Any]:
