@@ -66,6 +66,45 @@ a serwerem gry działa **most WebSocket↔TCP** (`ws_gateway.py`). Schemat:
 [React] --WebSocket--> [ws_gateway.py] --TLS/JSON-over-TCP--> [serwer gry]
 ```
 
+### Szybkie uruchomienie całego stosu (jedna komenda)
+
+Cały stos webowy (serwer gry + most WebSocket + dev server React) można podnieść jedną komendą:
+
+- **Windows (PowerShell)** — otwiera 3 okna terminala, w razie potrzeby robi `npm install`:
+  ```powershell
+  powershell -ExecutionPolicy Bypass -File run-all.ps1
+  ```
+- **Linux / macOS (make)** — serwer i most w tle, dev server na pierwszym planie (`Ctrl+C` ubija wszystko):
+  ```bash
+  make run-all
+  ```
+
+Następnie otwórz `http://localhost:5173` w dwóch kartach (`user1/pass1`, `user2/pass2`),
+jeden gracz wybiera „Utwórz grę", drugi „Dołącz do gry".
+
+### Makefile z PowerShell (Windows)
+
+Windows nie ma `make` w zestawie. Najprościej zainstalować go przez [Chocolatey](https://chocolatey.org/):
+
+```powershell
+choco install make -y
+```
+
+Targety Makefile domyślnie wołają `python3`, którego na Windows zwykle nie ma — jest `python`.
+Dlatego interpreter wskazuje się zmienną `PYTHON`:
+
+```powershell
+make run PYTHON=python          # serwer gry
+make gateway PYTHON=python      # most WebSocket
+make test PYTHON=python         # testy
+```
+
+> Uwaga: target `make run-all` korzysta ze składni powłoki bash (`&`, `trap`, `sleep`)
+> i działa tylko na Linux/macOS. Na Windows do podniesienia całego stosu użyj
+> `powershell -ExecutionPolicy Bypass -File run-all.ps1` (sekcja wyżej).
+
+### Uruchomienie ręczne (krok po kroku)
+
 Uruchomienie (każde w osobnym terminalu, z katalogu `battleships-pus`):
 
 1. **Serwer gry**: `python -m server.main`
