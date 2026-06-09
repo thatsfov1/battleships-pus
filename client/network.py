@@ -29,14 +29,18 @@ class NetworkClient:
         self.host = host or config.HOST
         self.port = port or config.PORT
         self.sock: Optional[ssl.SSLSocket] = None
-        self.reader = None
         self.inbox: "queue.Queue[dict]" = queue.Queue()
         self.token: Optional[str] = None
         self.cert_verified = False
         self._stop = threading.Event()
         self._recv_thread: Optional[threading.Thread] = None
         self._ping_thread: Optional[threading.Thread] = None
-        self._send_lock = threading.Lock()
+        # Jeden lock na WSZYSTKIE operacje SSL: obiekt OpenSSL nie jest bezpieczny
+        # dla rownoczesnego odczytu i zapisu. Odczyt z krotkim timeoutem (polling),
+        # aby nie blokowac wysylki na czas oczekiwania na dane.
+        self._io_lock = threading.Lock()
+        self._buffer = b""
+        self._poll_timeout = 0.2
 
     # --- nawiazywanie polaczenia -------------------------------------------------
 
@@ -53,7 +57,8 @@ class NetworkClient:
         ctx = self._make_context()
         raw = socket.create_connection((self.host, self.port), timeout=config.CONNECT_TIMEOUT)
         self.sock = ctx.wrap_socket(raw, server_hostname=config.SERVER_HOSTNAME)
-        self.reader = self.sock.makefile("rb")
+        self.sock.settimeout(self._poll_timeout)
+        self._buffer = b""
         self._stop.clear()
         self._drain_inbox()
         self._recv_thread = threading.Thread(target=self._recv_loop, daemon=True, name="recv")
@@ -76,31 +81,51 @@ class NetworkClient:
     def send(self, msg_type: str, **fields) -> str:
         msg = {"type": msg_type, "msg_id": str(uuid.uuid4()), "timestamp": time.time(), **fields}
         data = (json.dumps(msg, ensure_ascii=False) + "\n").encode("utf-8")
-        with self._send_lock:
+        with self._io_lock:
             if self.sock is None:
                 raise ConnectionError("Brak polaczenia z serwerem.")
             self.sock.sendall(data)
         return msg["msg_id"]
 
+    def _read_chunk(self) -> Optional[bytes]:
+        """Odczyt z timeoutem pod io_lock. None = brak danych teraz, b'' = zamkniete."""
+        with self._io_lock:
+            if self.sock is None:
+                return b""
+            try:
+                return self.sock.recv(4096)
+            except (socket.timeout, ssl.SSLWantReadError):
+                return None
+            except (OSError, ssl.SSLError):
+                return b""
+
     def _recv_loop(self) -> None:
         try:
             while not self._stop.is_set():
-                line = self.reader.readline()
-                if not line:
+                chunk = self._read_chunk()
+                if chunk is None:
+                    continue
+                if chunk == b"":
                     break
-                try:
-                    msg = json.loads(line.decode("utf-8"))
-                except (json.JSONDecodeError, UnicodeDecodeError):
-                    continue
-                if msg.get("type") == "PING":
-                    try:
-                        self.send("PONG")
-                    except Exception:
-                        break
-                    continue
-                self.inbox.put(msg)
+                self._buffer += chunk
+                while b"\n" in self._buffer:
+                    line, self._buffer = self._buffer.split(b"\n", 1)
+                    self._dispatch(line)
         finally:
             self.inbox.put({"type": DISCONNECTED})
+
+    def _dispatch(self, line: bytes) -> None:
+        try:
+            msg = json.loads(line.decode("utf-8"))
+        except (json.JSONDecodeError, UnicodeDecodeError):
+            return
+        if msg.get("type") == "PING":
+            try:
+                self.send("PONG")
+            except Exception:
+                pass
+            return
+        self.inbox.put(msg)
 
     def wait_for(self, types: set, timeout: float = 10.0) -> Optional[dict]:
         """Czeka na wiadomosc jednego z `types`, pomijajac komunikaty kontrolne.
