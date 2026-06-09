@@ -12,7 +12,8 @@ import random
 from typing import Final, Optional
 
 BOARD_SIZE: Final[int] = 10
-FLEET_SIZES: Final[tuple[int, ...]] = (5, 4, 3, 3, 2)
+# 5 statkow: jeden 4-masztowy, trzy 3-masztowe, jeden 2-masztowy.
+FLEET_SIZES: Final[tuple[int, ...]] = (4, 3, 3, 3, 2)
 
 RESULT_MISS: Final[str] = "MISS"
 RESULT_HIT: Final[str] = "HIT"
@@ -44,6 +45,7 @@ class Board:
         self.ships: list[Ship] = []
         self._occupied: set[tuple[int, int]] = set()
         self.shots: set[tuple[int, int]] = set()
+        self.last_sunk_len: int = 0  # dlugosc ostatnio zatopionego statku
 
     def in_bounds(self, x: int, y: int) -> bool:
         return 0 <= x < self.size and 0 <= y < self.size
@@ -90,13 +92,69 @@ class Board:
                         return False
         return True
 
+    @staticmethod
+    def _is_straight_line(cells: set[tuple[int, int]]) -> bool:
+        """Sprawdza, czy pola tworza ciagla, prosta linie (poziom lub pion)."""
+        n = len(cells)
+        if n == 0:
+            return False
+        if n == 1:
+            return True
+        xs = {x for (x, _) in cells}
+        ys = {y for (_, y) in cells}
+        if len(ys) == 1:
+            return len(xs) == n and max(xs) - min(xs) == n - 1
+        if len(xs) == 1:
+            return len(ys) == n and max(ys) - min(ys) == n - 1
+        return False
+
+    def place_fleet_manual(self, ships, sizes: tuple[int, ...] = FLEET_SIZES) -> bool:
+        """Ustawia flote z reczanego rozmieszczenia. Zwraca False, gdy uklad jest
+        niepoprawny: zle rozmiary, poza plansza, nie-prosty statek, nakladanie
+        lub stykanie sie statkow krawedzia/rogiem."""
+        parsed: list[set[tuple[int, int]]] = []
+        for cells in ships:
+            try:
+                cellset = {(int(x), int(y)) for (x, y) in cells}
+            except (TypeError, ValueError):
+                return False
+            if len(cellset) != len(list(cells)):
+                return False
+            if not all(self.in_bounds(x, y) for (x, y) in cellset):
+                return False
+            if not self._is_straight_line(cellset):
+                return False
+            parsed.append(cellset)
+
+        if sorted(len(c) for c in parsed) != sorted(sizes):
+            return False
+
+        occupied: set[tuple[int, int]] = set()
+        for cellset in parsed:
+            for (cx, cy) in cellset:
+                for dx in (-1, 0, 1):
+                    for dy in (-1, 0, 1):
+                        if (cx + dx, cy + dy) in occupied:
+                            return False
+            occupied |= cellset
+
+        self.ships = [Ship(c) for c in parsed]
+        self._occupied = occupied
+        self.shots = set()
+        self.last_sunk_len = 0
+        return True
+
     def receive_shot(self, x: int, y: int) -> str:
-        """Rejestruje strzal przeciwnika i zwraca MISS / HIT / SUNK."""
+        """Rejestruje strzal przeciwnika i zwraca MISS / HIT / SUNK.
+        Po zatopieniu ustawia last_sunk_len na dlugosc zatopionego statku."""
         self.shots.add((x, y))
         for ship in self.ships:
             if (x, y) in ship.cells:
                 ship.register_hit((x, y))
-                return RESULT_SUNK if ship.is_sunk() else RESULT_HIT
+                if ship.is_sunk():
+                    self.last_sunk_len = len(ship.cells)
+                    return RESULT_SUNK
+                return RESULT_HIT
         return RESULT_MISS
 
     def all_sunk(self) -> bool:

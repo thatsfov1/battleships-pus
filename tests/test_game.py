@@ -71,6 +71,55 @@ class TestBoard(unittest.TestCase):
         board = Board()
         self.assertFalse(board.all_sunk())
 
+    def test_last_sunk_len_set_on_sink(self):
+        board = Board()
+        board.ships = [Ship({(0, 0), (1, 0), (2, 0)})]
+        board._occupied = {(0, 0), (1, 0), (2, 0)}
+        board.receive_shot(0, 0)
+        board.receive_shot(1, 0)
+        self.assertEqual(board.last_sunk_len, 0)
+        board.receive_shot(2, 0)
+        self.assertEqual(board.last_sunk_len, 3)
+
+
+def _valid_fleet():
+    # zgodne z FLEET_SIZES (4,3,3,3,2), statki rozdzielone pustymi wierszami
+    return [
+        [(0, 0), (1, 0), (2, 0), (3, 0)],
+        [(0, 2), (1, 2), (2, 2)],
+        [(0, 4), (1, 4), (2, 4)],
+        [(0, 6), (1, 6), (2, 6)],
+        [(0, 8), (1, 8)],
+    ]
+
+
+class TestManualPlacement(unittest.TestCase):
+    def test_valid_placement(self):
+        board = Board()
+        self.assertTrue(board.place_fleet_manual(_valid_fleet()))
+        self.assertEqual(len(board.ships), 5)
+        self.assertEqual(len(board._occupied), sum(game.FLEET_SIZES))
+
+    def test_rejects_touching_ships(self):
+        fleet = _valid_fleet()
+        fleet[1] = [(0, 1), (1, 1), (2, 1)]  # przylega do 4-masztowca w wierszu 0
+        self.assertFalse(Board().place_fleet_manual(fleet))
+
+    def test_rejects_wrong_sizes(self):
+        fleet = _valid_fleet()
+        fleet[0] = [(0, 0), (1, 0), (2, 0), (3, 0), (4, 0)]  # 5-masztowiec
+        self.assertFalse(Board().place_fleet_manual(fleet))
+
+    def test_rejects_out_of_bounds(self):
+        fleet = _valid_fleet()
+        fleet[4] = [(9, 8), (10, 8)]  # poza plansza
+        self.assertFalse(Board().place_fleet_manual(fleet))
+
+    def test_rejects_non_straight_ship(self):
+        fleet = _valid_fleet()
+        fleet[1] = [(0, 2), (1, 2), (1, 3)]  # ksztalt L
+        self.assertFalse(Board().place_fleet_manual(fleet))
+
 
 if __name__ == "__main__":
     unittest.main()
