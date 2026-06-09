@@ -57,13 +57,44 @@ Przykłady komunikatów i flow protokołu dostępne są w `docs/protocol_example
    make test
    ```
 
+## Frontend webowy (React)
+
+Przeglądarka nie może otworzyć surowego gniazda TCP/TLS, dlatego między aplikacją React
+a serwerem gry działa **most WebSocket↔TCP** (`ws_gateway.py`). Schemat:
+
+```
+[React] --WebSocket--> [ws_gateway.py] --TLS/JSON-over-TCP--> [serwer gry]
+```
+
+Uruchomienie (każde w osobnym terminalu, z katalogu `battleships-pus`):
+
+1. **Serwer gry**: `python -m server.main`
+2. **Most WebSocket** (domyślnie `ws://localhost:8765`):
+   ```bash
+   python ws_gateway.py
+   # lub: make gateway
+   ```
+3. **Aplikacja React** (dev server na `http://localhost:5173`):
+   ```bash
+   cd web
+   npm install   # jednorazowo
+   npm run dev
+   ```
+
+Otwórz `http://localhost:5173` w dwóch kartach (dla dwóch graczy), zaloguj się
+(`user1/pass1`, `user2/pass2`), jeden „Utwórz grę", drugi „Dołącz do gry".
+Adres mostu można zmienić zmienną `VITE_GATEWAY_URL`.
+
 ## Wymagania
-- Python 3.12+
+- Python 3.12+ (serwer, klient CLI, most)
+- Node.js 18+ i npm (frontend React)
 - OpenSSL (do certyfikatów)
 
 ## Struktura Katalogów
 - `server/`: Kod źródłowy serwera (sieć, protokół, sesje, silnik gry `game.py`).
 - `client/`: Klient CLI (`network.py` — warstwa sieciowa, `game_ui.py` — render/parsowanie, `main.py` — pętla gry).
+- `web/`: Frontend React (Vite). Komponenty: `Login`, `Lobby`, `Board`, `Game`; hook `useGameSocket`.
+- `ws_gateway.py`: Most WebSocket↔TCP dla aplikacji webowej.
 - `certs/`: Skrypt i wygenerowane certyfikaty TLS.
 - `docs/`: Dokumentacja projektu.
 - `logs/`: Logi systemowe (z rotacją).

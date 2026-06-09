@@ -16,8 +16,14 @@ export default function App() {
   const [busy, setBusy] = useState(false)
   const [lobbyStatus, setLobbyStatus] = useState('idle') // idle | waiting
   const [game, setGame] = useState(null)
+  const [notice, setNotice] = useState(null)
   const tokenRef = useRef(null)
   const usernameRef = useRef('')
+  const phaseRef = useRef('login')
+
+  useEffect(() => {
+    phaseRef.current = phase
+  }, [phase])
 
   const onMessage = useCallback((msg) => {
     switch (msg.type) {
@@ -50,6 +56,7 @@ export default function App() {
         setPhase('game')
         break
       case 'MOVE_RESULT':
+        setNotice(null)
         setGame((prev) => {
           if (!prev) return prev
           const mark = HIT_MARKS.has(msg.result) ? 'X' : 'o'
@@ -59,10 +66,19 @@ export default function App() {
           return { ...prev, own: withCell(prev.own, msg.x, msg.y, mark), currentTurn: msg.next_turn }
         })
         break
+      case 'GAME_END':
+        setGame((prev) =>
+          prev ? { ...prev, over: true, result: { winner: msg.winner, reason: msg.reason } } : prev,
+        )
+        break
       case 'ERROR':
-        setBusy(false)
-        setLobbyStatus('idle')
-        setError(msg.message || msg.code)
+        if (phaseRef.current === 'game') {
+          setNotice(msg.message || msg.code)
+        } else {
+          setBusy(false)
+          setLobbyStatus('idle')
+          setError(msg.message || msg.code)
+        }
         break
       case '__DISCONNECTED__':
         setError('Utracono połączenie z mostem.')
@@ -113,6 +129,14 @@ export default function App() {
     [send],
   )
 
+  const backToLobby = useCallback(() => {
+    setGame(null)
+    setNotice(null)
+    setError(null)
+    setLobbyStatus('idle')
+    setPhase('lobby')
+  }, [])
+
   return (
     <div className="app">
       <h1>STATKI</h1>
@@ -129,7 +153,13 @@ export default function App() {
         />
       )}
       {phase === 'game' && game && (
-        <Game game={game} username={username} onFire={handleFire} />
+        <Game
+          game={game}
+          username={username}
+          onFire={handleFire}
+          notice={notice}
+          onBack={backToLobby}
+        />
       )}
     </div>
   )

@@ -147,6 +147,39 @@ button.secondary { background: transparent; color: var(--accent); border: 1px so
 .cell.firable:hover { outline: 2px solid var(--accent); outline-offset: -2px; }
 button.cell:disabled { cursor: default; opacity: 1; }
 
+.notice {
+  background: rgba(229, 72, 77, 0.15);
+  border: 1px solid var(--hit);
+  color: #ffb3b5;
+  padding: 8px 14px;
+  border-radius: 6px;
+  font-size: 0.9rem;
+}
+
+.overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(4, 10, 16, 0.7);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 10;
+}
+
+.modal {
+  background: var(--panel);
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  padding: 32px 40px;
+  text-align: center;
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  min-width: 280px;
+}
+
+.modal h2 { margin: 0; font-size: 1.8rem; letter-spacing: 1px; }
+
 .legend { display: flex; gap: 18px; color: var(--muted); font-size: 0.85rem; }
 .legend span { display: flex; align-items: center; gap: 6px; }
 .swatch { width: 14px; height: 14px; border-radius: 3px; display: inline-block; }

@@ -1,7 +1,16 @@
 import Board from './Board'
 
-export default function Game({ game, username, onFire }) {
+function resultText(result, username) {
+  if (!result) return ''
+  const reason = result.reason === 'DISCONNECT' ? ' (przeciwnik się rozłączył)' : ''
+  if (result.winner === username) return `Zatopiłeś całą flotę przeciwnika!${reason}`
+  if (result.winner) return `Wygrywa ${result.winner}.${reason}`
+  return 'Gra zakończona bez rozstrzygnięcia.'
+}
+
+export default function Game({ game, username, onFire, notice, onBack }) {
   const myTurn = game.currentTurn === username && !game.over
+  const won = game.result?.winner === username
 
   return (
     <div className="game">
@@ -12,6 +21,9 @@ export default function Game({ game, username, onFire }) {
             ? 'Twoja tura — kliknij pole na planszy przeciwnika'
             : `Tura przeciwnika (${game.currentTurn || '—'})`}
       </div>
+
+      {notice && <div className="notice">{notice}</div>}
+
       <div className="boards">
         <Board board={game.own} title="Twoja plansza" />
         <Board
@@ -21,11 +33,24 @@ export default function Game({ game, username, onFire }) {
           onCell={onFire}
         />
       </div>
+
       <div className="legend">
         <span><i className="swatch ship" /> statek</span>
         <span><i className="swatch hit" /> trafienie</span>
         <span><i className="swatch miss" /> pudło</span>
       </div>
+
+      {game.over && (
+        <div className="overlay">
+          <div className="modal">
+            <h2 className={won ? 'ok' : 'bad'}>{won ? 'ZWYCIĘSTWO 🎉' : 'PORAŻKA'}</h2>
+            <p className="muted">{resultText(game.result, username)}</p>
+            <button type="button" onClick={onBack}>
+              Powrót do lobby
+            </button>
+          </div>
+        </div>
+      )}
     </div>
   )
 }
