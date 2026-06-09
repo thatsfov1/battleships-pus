@@ -82,6 +82,32 @@ Cały stos webowy (serwer gry + most WebSocket + dev server React) można podnie
 Następnie otwórz `http://localhost:5173` w dwóch kartach (`user1/pass1`, `user2/pass2`),
 jeden gracz wybiera „Utwórz grę", drugi „Dołącz do gry".
 
+### Udostępnienie gry w internecie przez ngrok
+
+Aby zagrać ze znajomymi spoza sieci lokalnej, można wystawić grę przez darmowy
+tunel [ngrok](https://ngrok.com/). Dzięki proxy WebSocket w Vite (ścieżka `/ws`)
+wystarczy **jeden tunel** na port `5173` — i strona, i WebSocket idą przez ten
+sam publiczny adres.
+
+Jednorazowo (konto darmowe na ngrok.com → skopiuj token z dashboardu):
+```powershell
+ngrok config add-authtoken <TWOJ_TOKEN>
+```
+
+Uruchomienie (Windows, z katalogu `battleships-pus`):
+```powershell
+powershell -ExecutionPolicy Bypass -File share-ngrok.ps1
+```
+Skrypt podnosi cały stos lokalny (serwer + most + React) i otwiera tunel.
+W oknie ngrok pojawi się linia `Forwarding  https://xxxx.ngrok-free.app` — ten
+adres wyślij znajomym (każdy otwiera go w przeglądarce; przy pierwszym wejściu
+ngrok pokaże ekran ostrzeżenia — kliknij „Visit Site").
+
+Ręcznie, w osobnym terminalu, gdy stos już działa:
+```powershell
+ngrok http 5173
+```
+
 ### Makefile z PowerShell (Windows)
 
 Windows nie ma `make` w zestawie. Najprościej zainstalować go przez [Chocolatey](https://chocolatey.org/):

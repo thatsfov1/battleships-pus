@@ -1,146 +1,94 @@
-# Jak zagrać w Statki przez internet — instrukcja end-to-end
+# Jak zagrać w Statki przez internet (ngrok)
 
-Kompletny przewodnik od zera. Dwa dowolne komputery, gdziekolwiek na świecie.
+Kompletny przewodnik od zera. Gracie z dowolnego miejsca na świecie, a **znajomi
+nie muszą nic instalować** — wystarczy przeglądarka i link.
 
-> **Zasada:** oba komputery łączą się z **jednym wspólnym serwerem gry**. Jedna
-> osoba (host) ten serwer uruchamia i udostępnia, reszta tylko się łączy. Tak
-> działa każda gra sieciowa — bez wspólnego serwera komputery nie mają jak się
-> odnaleźć.
+> **Zasada:** jedna osoba (HOST) uruchamia całą grę u siebie i udostępnia ją
+> jednym publicznym adresem przez darmowy tunel **ngrok**. Reszta tylko otwiera
+> ten link w przeglądarce. Dzięki proxy WebSocket wystarczy **jeden tunel**
+> (port 5173) — i strona, i komunikacja gry idą przez ten sam adres.
 
 Role:
-- **HOST** — uruchamia serwer gry i wystawia go do internetu. Może też grać.
-- **GRACZ** — tylko się łączy. (Host również wykonuje kroki „GRACZ", żeby grać.)
+- **HOST** — uruchamia grę i wystawia ją do internetu. Może też grać.
+- **GRACZ** — dostaje link i otwiera go w przeglądarce. Nic nie instaluje.
 
 ---
 
-## CZĘŚĆ 0 — Przygotowanie (każdy komputer, raz)
+## CZĘŚĆ A — HOST: przygotowanie (jednorazowo)
 
-Wykonują **wszyscy** (host i gracze), bo każdy uruchamia coś lokalnie.
-
-### 0.1 Zainstaluj wymagane programy
+### A.1 Zainstaluj wymagane programy
 - **Python 3.12+** — https://www.python.org/downloads/
   (przy instalacji zaznacz **„Add Python to PATH"**)
 - **Node.js 18+** — https://nodejs.org (wersja LTS)
+- **ngrok** — https://ngrok.com/download (albo `choco install ngrok`)
 
-Sprawdź w PowerShell, że są widoczne:
+Sprawdź w PowerShell, że wszystko jest widoczne:
 ```powershell
 python --version
 node --version
+ngrok version
 ```
 
-### 0.2 Pobierz projekt
-Skopiuj cały folder `battleships-pus` na komputer (np. tak jak masz teraz na
-`C:\Users\...\statki\battleships-pus`).
+### A.2 Skonfiguruj ngrok (raz)
+Załóż darmowe konto na https://ngrok.com, skopiuj swój token z panelu
+(sekcja **„Your Authtoken"**) i ustaw go:
+```powershell
+ngrok config add-authtoken <TWOJ_TOKEN>
+```
 
-### 0.3 Zainstaluj zależności
-W PowerShell wejdź do folderu projektu i zainstaluj biblioteki:
+### A.3 Zainstaluj zależności projektu (raz)
+W PowerShell wejdź do folderu projektu:
 ```powershell
 cd C:\sciezka\do\battleships-pus
 python -m pip install -r requirements.txt
+cd web; npm install; cd ..
 ```
-React zainstaluje się sam przy pierwszym uruchomieniu `run-client.ps1`
-(albo ręcznie: `cd web; npm install`).
+(React i tak doinstaluje się sam przy pierwszym uruchomieniu, ale lepiej zrobić to teraz.)
 
 ---
 
-## CZĘŚĆ A — HOST: uruchom serwer gry
+## CZĘŚĆ B — HOST: uruchom grę i tunel
 
-> Robi to **jedna osoba**.
-
-### A.1 Wystartuj serwer
 W folderze `battleships-pus`:
 ```powershell
-powershell -ExecutionPolicy Bypass -File run-server.ps1
+powershell -ExecutionPolicy Bypass -File share-ngrok.ps1
 ```
-Skrypt utworzy bazę kont (przy pierwszym uruchomieniu) i wystartuje serwer.
-Zobaczysz w oknie:
+
+Skrypt:
+1. uruchamia **serwer gry**, **most WebSocket** i **dev server React** (3 okna),
+2. otwiera **tunel ngrok** na port 5173.
+
+W oknie ngrok znajdź linię:
 ```
-Serwer TLS nasluchuje na porcie 5000
+Forwarding   https://xxxx-xx-xx-xx-xx.ngrok-free.app -> http://localhost:5173
 ```
-**Zostaw to okno otwarte** — serwer musi działać przez całą rozgrywkę.
+Adres `https://xxxx....ngrok-free.app` to **link do gry**.
+
+> ⚠️ Zostaw wszystkie okna otwarte przez całą rozgrywkę. Darmowy adres ngrok
+> **zmienia się przy każdym uruchomieniu** — po restarcie wyślij znajomemu nowy link.
 
 ---
 
-## CZĘŚĆ B — HOST: wystaw serwer do internetu (playit.gg)
+## CZĘŚĆ C — GRACZE: dołącz do gry
 
-Serwer działa, ale na razie tylko lokalnie. Trzeba dać mu publiczny adres.
-Serwer używa surowego TCP/TLS (nie HTTP), więc potrzebny jest **tunel TCP**.
-Najprościej i za darmo: **playit.gg** (daje stały adres).
+> Robi to **każdy gracz** (host też, jeśli gra). Nic nie instalujesz.
 
-### B.1 Załóż konto i pobierz program
-1. Wejdź na https://playit.gg → załóż darmowe konto.
-2. Pobierz i zainstaluj **playit** na Windows (przycisk „Download").
-3. Uruchom program — otworzy stronę logowania w przeglądarce, zaloguj się
-   (program połączy się z Twoim kontem).
-
-### B.2 Utwórz tunel TCP na port 5000
-W panelu playit.gg (w przeglądarce):
-1. **Add Tunnel** / „Create Tunnel".
-2. Typ: **TCP** (NIE „Minecraft", NIE „HTTP").
-3. **Local port / Local address**: `5000` (czyli `127.0.0.1:5000`).
-4. Zapisz.
-
-> Układ panelu playit.gg bywa aktualizowany — szukaj opcji „custom TCP tunnel"
-> wskazującej na lokalny port 5000.
-
-### B.3 Odczytaj publiczny adres
-playit.gg pokaże publiczny adres tunelu, np.:
-```
-adres:  147-x-x-x.something.playit.gg
-port:   12345
-```
-**To jest adres Twojego serwera.** Przekaż go drugiemu graczowi
-(i sobie — będzie potrzebny w Części C). Zostaw program playit uruchomiony.
-
----
-
-## CZĘŚĆ C — GRACZE: połącz się z serwerem
-
-> Robi to **każdy gracz osobno** (host też, jeśli gra).
-
-### C.1 Wpisz adres serwera
-Otwórz plik `run-client.ps1` w folderze `battleships-pus` (np. w Notatniku)
-i na górze wpisz adres oraz port z Części B.3:
-```powershell
-$SERVER_HOST = '147-x-x-x.something.playit.gg'   # adres od hosta
-$SERVER_PORT = '12345'                           # port od hosta
-```
-Zapisz plik.
-
-### C.2 Uruchom klienta
-W folderze `battleships-pus`:
-```powershell
-powershell -ExecutionPolicy Bypass -File run-client.ps1
-```
-Otworzą się **dwa okna**: most WebSocket (łączy się z serwerem hosta) oraz
-React (Vite). Przy pierwszym razie React zrobi `npm install` — chwilę to trwa.
-
-Gdy zobaczysz w oknie React komunikat typu `Local: http://localhost:5173/`,
-można grać.
+1. Otwórz link `https://xxxx.ngrok-free.app` od hosta w przeglądarce.
+2. Przy pierwszym wejściu ngrok pokaże ekran ostrzeżenia → kliknij **„Visit Site"**.
+3. Zaloguj się testowym kontem — **każdy komputer innym kontem**:
+   - Gracz 1 → login **user1**, hasło **pass1**
+   - Gracz 2 → login **user2**, hasło **pass2**
 
 ---
 
 ## CZĘŚĆ D — Rozgrywka
 
-### D.1 Otwórz grę
-Każdy gracz otwiera w przeglądarce:
-```
-http://localhost:5173
-```
+1. Jeden gracz klika **„Utwórz grę"** → zobaczy „Oczekiwanie na przeciwnika…".
+2. Drugi gracz klika **„Dołącz do gry"**.
 
-### D.2 Zaloguj się — RÓŻNE konta na różnych komputerach
-- Komputer 1 → login **user1**, hasło **pass1**
-- Komputer 2 → login **user2**, hasło **pass2**
-
-> Konta muszą być różne — na jednym koncie nie zalogują się dwie osoby naraz.
-
-### D.3 Połączcie się w grę
-- Jeden gracz klika **„Utwórz grę"** → zobaczy „Oczekiwanie na przeciwnika…"
-- Drugi gracz klika **„Dołącz do gry"**
-
-Serwer **automatycznie paruje** obu graczy — nie ma żadnego kodu/ID do
-przepisywania. Po sparowaniu zaczyna się faza rozstawienia floty, potem
-naprzemienne strzały aż do zatopienia całej floty przeciwnika.
+Serwer **automatycznie paruje** obu graczy — nie ma żadnego kodu/ID do przepisywania.
+Po sparowaniu zaczyna się rozstawienie floty, a potem naprzemienne strzały
+(klikasz pola planszy przeciwnika). Wygrywa ten, kto pierwszy zatopi całą flotę wroga.
 
 ---
 
@@ -148,19 +96,27 @@ naprzemienne strzały aż do zatopienia całej floty przeciwnika.
 
 | Objaw | Przyczyna i rozwiązanie |
 |---|---|
-| „Utracono połączenie z mostem" | Most nie połączył się z serwerem. Sprawdź: czy host ma uruchomiony `run-server.ps1` i playit, oraz czy w `run-client.ps1` adres/port są poprawne. Po poprawkach **odśwież** stronę (F5). |
-| `ModuleNotFoundError` | Nie zainstalowano zależności — wykonaj `python -m pip install -r requirements.txt` (Część 0.3). |
-| Most pisze „nie udalo sie polaczyc z serwerem gry" | Zły adres/port w `run-client.ps1`, albo serwer/playit nie działają u hosta. |
+| `ngrok: command not found` | Zainstaluj ngrok (`choco install ngrok`) i ustaw authtoken (A.2). |
+| ngrok pisze o braku authtokena | Wykonaj `ngrok config add-authtoken <TWOJ_TOKEN>` (A.2). |
+| Strona prosi o „Visit Site" | Normalne dla darmowego ngroka — kliknij przycisk, by przejść dalej. |
+| „This host is not allowed" | W `web/vite.config.js` musi być `allowedHosts: true` (już ustawione). |
+| „Utracono połączenie z mostem" | Most/serwer nie działają. Sprawdź, czy 3 okna z `share-ngrok.ps1` nadal są otwarte; odśwież stronę (F5). |
+| Znajomy nie może wejść | Tunel ngrok został zamknięty albo link jest stary — wyślij aktualny adres z okna ngrok. |
 | „Dołącz" nic nie robi | Drugi gracz nie kliknął jeszcze „Utwórz grę", albo obaj zalogowali się na to samo konto. Użyjcie user1 i user2. |
-| React nie startuje | W folderze `web` zrób raz `npm install`. |
+| `ModuleNotFoundError` u hosta | Brak zależności — `python -m pip install -r requirements.txt` (A.3). |
+
+---
 
 ## Uwagi
-- **Tylko host** uruchamia `run-server.ps1`. Jeśli każdy odpali własny serwer,
-  traficie na osobne, niepołączone serwery (to był pierwotny problem).
-- **Gracze nie ruszają routera** — most łączy się wychodząco, NAT to przepuszcza.
-  Tylko host wystawia port (przez playit.gg).
-- **W tej samej sieci Wi-Fi** możesz pominąć playit.gg: jako `$SERVER_HOST` podaj
-  lokalny adres IP hosta (`ipconfig` → „IPv4 Address"), a w zaporze Windows
-  zezwól na ruch przychodzący na porcie 5000.
+
+- **Tylko HOST** uruchamia `share-ngrok.ps1`. Gracze niczego nie odpalają —
+  dostają gotowy link.
+- **Gracze nie ruszają routera** — łączą się wychodząco przez przeglądarkę,
+  NAT to przepuszcza. Tylko host wystawia port (przez ngrok).
+- **W tej samej sieci Wi-Fi** tunel jest zbędny: host odpala `run-all.ps1`,
+  a znajomy wchodzi pod `http://<adres-IP-hosta>:5173` (`ipconfig` → „IPv4 Address";
+  w zaporze Windows zezwól na port 5173).
 - **Bezpieczeństwo (projekt studencki):** certyfikat i klucz TLS są w repo
   (`certs/`), więc do produkcji wygenerowałbyś własne i nie trzymał ich w repo.
+
+Szczegóły techniczne i inne sposoby uruchomienia: [readme.md](readme.md).
