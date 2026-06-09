@@ -61,6 +61,7 @@ class ClientSession:
         "SESSION_NOT_FOUND": "Nie znaleziono aktywnej sesji.",
         "NOT_YOUR_TURN": "Nie mozesz wykonac ruchu w tej turze.",
         "INVALID_MOVE": "Niepoprawny ruch.",
+        "INVALID_PLACEMENT": "Niepoprawne rozmieszczenie statkow.",
     }
 
     def handle(self):
@@ -133,9 +134,13 @@ class ClientSession:
                 else:
                     if msg_type == "PING":
                         protocol.send_message(self.conn, {"type": "PONG", "msg_id": str(uuid.uuid4()), "timestamp": time.time()})
-                    elif msg_type in ("CREATE_GAME", "JOIN_GAME", "MOVE"):
+                    elif msg_type in ("CREATE_GAME", "JOIN_GAME", "MOVE", "PLACE_SHIPS"):
                         self._send_ack(msg_id)
-                        if msg_type == "CREATE_GAME":
+                        if msg_type == "PLACE_SHIPS":
+                            error = self.session_manager.handle_placement(self, msg.get("ships"))
+                            if error:
+                                self._send_error(error, self._MOVE_ERROR_MESSAGES.get(error, "Blad rozmieszczenia."))
+                        elif msg_type == "CREATE_GAME":
                             sid = self.session_manager.create_game(self)
                             if sid:
                                 protocol.send_message(self.conn, {"type": "GAME_CREATED", "session_id": sid})

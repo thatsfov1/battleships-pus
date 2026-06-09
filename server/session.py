@@ -14,6 +14,7 @@ class GameSession:
         self.status = "LOBBY"
         self.current_turn = None
         self.boards = {}
+        self.ready: set[str] = set()
         self.history = []
 
     def is_full(self) -> bool:
@@ -108,19 +109,59 @@ class SessionManager:
         })
 
     def _check_start_game(self, session: GameSession):
+        """Po skompletowaniu graczy rozpoczyna faze rozmieszczania statkow."""
         if session.is_full() and session.status == "LOBBY":
-            session.status = "IN_PROGRESS"
-            session.setup_boards()
+            session.status = "PLACEMENT"
             for p in session.players:
                 protocol.send_message(p.conn, {
-                    "type": "GAME_START",
+                    "type": "PLACEMENT",
                     "msg_id": str(uuid.uuid4()),
                     "timestamp": time.time(),
                     "session_id": session.session_id,
                     "players": [player.username for player in session.players],
-                    "current_turn": session.current_turn,
-                    "your_board": session.boards[p.username].own_view(),
+                    "fleet": list(game.FLEET_SIZES),
                 })
+
+    def handle_placement(self, player, ships) -> Optional[str]:
+        """Przyjmuje reczne rozmieszczenie floty. Gdy obaj gracze sa gotowi,
+        rozpoczyna rozgrywke (GAME_START). Zwraca kod bledu lub None."""
+        with self.lock:
+            session = self._find_active_session(player.username)
+        if session is None:
+            return "SESSION_NOT_FOUND"
+
+        started = False
+        with session.lock:
+            if session.status != "PLACEMENT":
+                return "INVALID_PLACEMENT"
+            board = game.Board()
+            if not isinstance(ships, list) or not board.place_fleet_manual(ships):
+                return "INVALID_PLACEMENT"
+            session.boards[player.username] = board
+            session.ready.add(player.username)
+
+            if len(session.ready) >= 2:
+                session.status = "IN_PROGRESS"
+                session.current_turn = session.players[0].username
+                started = True
+                recipients = list(session.players)
+                session_id = session.session_id
+                current_turn = session.current_turn
+                players = [p.username for p in session.players]
+                own_views = {p.username: session.boards[p.username].own_view() for p in session.players}
+
+        if started:
+            for p in recipients:
+                protocol.send_message(p.conn, {
+                    "type": "GAME_START",
+                    "msg_id": str(uuid.uuid4()),
+                    "timestamp": time.time(),
+                    "session_id": session_id,
+                    "players": players,
+                    "current_turn": current_turn,
+                    "your_board": own_views[p.username],
+                })
+        return None
 
     def handle_move(self, player, x: int, y: int) -> Optional[str]:
         """Przetwarza ruch gracza. Zwraca kod bledu lub None przy sukcesie.
@@ -149,6 +190,7 @@ class SessionManager:
                 return "INVALID_MOVE"
 
             result = target.receive_shot(x, y)
+            sunk_len = target.last_sunk_len if result == "SUNK" else 0
             session.history.append({"by": player.username, "x": x, "y": y, "result": result})
 
             if target.all_sunk():
@@ -166,6 +208,7 @@ class SessionManager:
                 "x": x,
                 "y": y,
                 "result": result,
+                "sunk_len": sunk_len,
                 "by": player.username,
                 "next_turn": next_turn,
             }

@@ -22,6 +22,17 @@ class MockPlayer:
         return [m["type"] for m in self.conn.messages]
 
 
+def valid_fleet():
+    # zgodne z FLEET_SIZES (4,3,3,3,2)
+    return [
+        [(0, 0), (1, 0), (2, 0), (3, 0)],
+        [(0, 2), (1, 2), (2, 2)],
+        [(0, 4), (1, 4), (2, 4)],
+        [(0, 6), (1, 6), (2, 6)],
+        [(0, 8), (1, 8)],
+    ]
+
+
 class TestSessionGame(unittest.TestCase):
     def _start_game(self):
         sm = SessionManager()
@@ -29,8 +40,36 @@ class TestSessionGame(unittest.TestCase):
         sid = sm.create_game(p1)
         p2 = MockPlayer("user2")
         sm.join_game(p2)
+        sm.handle_placement(p1, valid_fleet())
+        sm.handle_placement(p2, valid_fleet())
         session = sm.sessions[sid]
         return sm, p1, p2, session
+
+    def test_placement_phase_then_start(self):
+        sm = SessionManager()
+        p1 = MockPlayer("user1")
+        sid = sm.create_game(p1)
+        p2 = MockPlayer("user2")
+        sm.join_game(p2)
+        session = sm.sessions[sid]
+        self.assertEqual(session.status, "PLACEMENT")
+        self.assertIn("PLACEMENT", p1.types())
+
+        self.assertIsNone(sm.handle_placement(p1, valid_fleet()))
+        self.assertEqual(session.status, "PLACEMENT")  # czeka na drugiego
+        self.assertIsNone(sm.handle_placement(p2, valid_fleet()))
+        self.assertEqual(session.status, "IN_PROGRESS")
+        self.assertIn("GAME_START", p2.types())
+
+    def test_invalid_placement_rejected(self):
+        sm = SessionManager()
+        p1 = MockPlayer("user1")
+        sm.create_game(p1)
+        p2 = MockPlayer("user2")
+        sm.join_game(p2)
+        bad = valid_fleet()
+        bad[1] = [(0, 1), (1, 1), (2, 1)]  # przylega do 4-masztowca
+        self.assertEqual(sm.handle_placement(p1, bad), "INVALID_PLACEMENT")
 
     def test_game_start_sends_boards(self):
         sm, p1, p2, session = self._start_game()

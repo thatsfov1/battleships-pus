@@ -11,15 +11,26 @@ class MockPlayer:
     def sendall(self, data):
         pass
 
+def _fleet():
+    return [
+        [(0, 0), (1, 0), (2, 0), (3, 0)],
+        [(0, 2), (1, 2), (2, 2)],
+        [(0, 4), (1, 4), (2, 4)],
+        [(0, 6), (1, 6), (2, 6)],
+        [(0, 8), (1, 8)],
+    ]
+
 class TestReconnect(unittest.TestCase):
     def test_reconnect_within_timeout(self):
         sm = SessionManager()
         p1 = MockPlayer("user1")
         sid = sm.create_game(p1)
-        
+
         p2 = MockPlayer("user2")
-        sm.join_game(p2) # Start game
-        
+        sm.join_game(p2) # Start placement
+        sm.handle_placement(p1, _fleet())
+        sm.handle_placement(p2, _fleet())
+
         session = sm.sessions[sid]
         self.assertEqual(session.status, "IN_PROGRESS")
         
@@ -40,7 +51,9 @@ class TestReconnect(unittest.TestCase):
         sid = sm.create_game(p1)
         p2 = MockPlayer("user2")
         sm.join_game(p2)
-        
+        sm.handle_placement(p1, _fleet())
+        sm.handle_placement(p2, _fleet())
+
         sm.remove_player_from_sessions(p1)
         # Give cleanup thread more time to run (sleep 1s for 0.1s timeout)
         time.sleep(1.5)
