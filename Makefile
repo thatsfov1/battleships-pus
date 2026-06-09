@@ -4,6 +4,9 @@ run:
 run-client:
 	python3 -m client.main
 
+gateway:
+	python3 ws_gateway.py
+
 test:
 	python3 -m unittest discover tests
 
