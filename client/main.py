@@ -6,6 +6,7 @@ Uruchomienie:  python -m client.main  [host] [port]
 from __future__ import annotations
 
 import hashlib
+import random
 import sys
 import time
 
@@ -15,6 +16,7 @@ from .network import NetworkClient, DISCONNECTED
 
 EMPTY = lambda: [["" for _ in range(game_ui.BOARD_SIZE)] for _ in range(game_ui.BOARD_SIZE)]
 _HIT = ("HIT", "SUNK")
+DEFAULT_FLEET = [4, 3, 3, 3, 2]
 
 
 def _input(prompt: str) -> str:
@@ -22,6 +24,37 @@ def _input(prompt: str) -> str:
         return input(prompt)
     except (EOFError, KeyboardInterrupt):
         raise SystemExit("\nPrzerwano.")
+
+
+def _free(cells, occupied) -> bool:
+    for (cx, cy) in cells:
+        for dx in (-1, 0, 1):
+            for dy in (-1, 0, 1):
+                if (cx + dx, cy + dy) in occupied:
+                    return False
+    return True
+
+
+def random_fleet(sizes) -> list:
+    """Losowe, poprawne rozmieszczenie floty (statki nie stykaja sie)."""
+    size = game_ui.BOARD_SIZE
+    occupied = set()
+    ships = []
+    for length in sizes:
+        for _ in range(1000):
+            if random.choice([True, False]):
+                x = random.randint(0, size - length)
+                y = random.randint(0, size - 1)
+                cells = [(x + i, y) for i in range(length)]
+            else:
+                x = random.randint(0, size - 1)
+                y = random.randint(0, size - length)
+                cells = [(x, y + i) for i in range(length)]
+            if _free(cells, occupied):
+                ships.append([[cx, cy] for (cx, cy) in cells])
+                occupied.update(cells)
+                break
+    return ships
 
 
 class GameClient:
@@ -33,6 +66,9 @@ class GameClient:
         self.tracking = EMPTY()
         self.current_turn = None
         self.over = False
+        self.fleet_count = len(DEFAULT_FLEET)
+        self.enemy_sunk = 0
+        self.my_sunk = 0
 
     # --- logowanie ---------------------------------------------------------------
 
@@ -84,25 +120,44 @@ class GameClient:
             return
         print("Gra utworzona. Oczekiwanie na przeciwnika (Ctrl+C aby przerwac)...")
         try:
-            start = self.client.wait_for({"GAME_START"}, timeout=3600)
+            placement = self.client.wait_for({"PLACEMENT"}, timeout=3600)
         except KeyboardInterrupt:
             print("\nPowrot do menu.")
             return
-        if start is None:
+        if placement is None:
             print("Przeciwnik nie dolaczyl.")
             return
-        self._play(start)
+        self._place_and_start(placement)
 
     def _join_game(self) -> None:
         self.client.send("JOIN_GAME")
-        resp = self.client.wait_for({"GAME_START", "ERROR"}, timeout=10)
+        resp = self.client.wait_for({"PLACEMENT", "GAME_STATE", "ERROR"}, timeout=10)
         if resp is None:
             print("Brak odpowiedzi serwera.")
             return
         if resp.get("type") == "ERROR":
             print("Nie mozna dolaczyc:", resp.get("message", "brak gier"))
             return
-        self._play(resp)
+        if resp.get("type") == "GAME_STATE":  # powrot do trwajacej gry
+            self._load_state(resp)
+            self._resume(resp)
+            return
+        self._place_and_start(resp)
+
+    def _place_and_start(self, placement: dict) -> None:
+        fleet = placement.get("fleet") or DEFAULT_FLEET
+        self.fleet_count = len(fleet)
+        print(f"Rozmieszczam flote losowo (rozmiary: {fleet})...")
+        self.client.send("PLACE_SHIPS", ships=random_fleet(fleet))
+        start = self.client.wait_for({"GAME_START", "ERROR"}, timeout=15)
+        if start is None or start.get("type") == "ERROR":
+            print("Nie udalo sie rozpoczac gry:", (start or {}).get("message", "brak odpowiedzi"))
+            return
+        self._play(start)
+
+    def _resume(self, state: dict) -> None:
+        self.over = False
+        self._game_loop()
 
     # --- rozgrywka ---------------------------------------------------------------
 
@@ -117,11 +172,19 @@ class GameClient:
         self.tracking = EMPTY()
         self.current_turn = start.get("current_turn")
         self.over = False
+        self.enemy_sunk = 0
+        self.my_sunk = 0
         print("\n>>> GRA ROZPOCZETA <<<")
+        self._game_loop()
 
+    def _game_loop(self) -> None:
         while not self.over:
             print()
             print(game_ui.render_side_by_side(self.own, self.tracking))
+            print(
+                f"Zatopione statki przeciwnika: {self.enemy_sunk}/{self.fleet_count}"
+                f"  |  Twoje straty: {self.my_sunk}/{self.fleet_count}"
+            )
             if self.current_turn == self.username:
                 if not self._my_turn():
                     return
@@ -180,12 +243,17 @@ class GameClient:
         x, y, result, by = msg.get("x"), msg.get("y"), msg.get("result"), msg.get("by")
         label = game_ui.coord_label(x, y)
         mark = "X" if result in _HIT else "o"
+        sunk_info = f" — ZATOPIONY ({msg.get('sunk_len')}-masztowy)!" if result == "SUNK" else ""
         if by == self.username:
             self.tracking[y][x] = mark
-            print(f"Twoj strzal {label}: {result}")
+            if result == "SUNK":
+                self.enemy_sunk += 1
+            print(f"Twoj strzal {label}: {result}{sunk_info}")
         else:
             self.own[y][x] = mark
-            print(f"Przeciwnik strzela {label}: {result}")
+            if result == "SUNK":
+                self.my_sunk += 1
+            print(f"Przeciwnik strzela {label}: {result}{sunk_info}")
         self.current_turn = msg.get("next_turn")
 
     def _apply_game_end(self, msg: dict) -> None:
